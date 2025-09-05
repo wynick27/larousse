@@ -1,4 +1,4 @@
-# 拉鲁斯法汉双解词典（larousse）
+# larousse
 
 
 ### 校订流程草案
