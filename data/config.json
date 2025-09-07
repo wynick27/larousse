@@ -1,0 +1,16 @@
+{
+  "input_json": "./data/拉鲁斯法汉双解词典_gemini.json",
+  "output_json": "./data/拉鲁斯法汉双解词典_output.json",
+  "key_name": "id",
+  "image_name": "position",
+  "input_pdf": "./data/拉鲁斯法汉双解词典.pdf",
+  "candidates": {
+	  "textin": "./data/textin.json",
+	  "quark": "./data/quark.json",
+	  "french": "./data/french.json"
+  },
+  "items_per_page": 1,
+  "field_config": {
+    "text": {"label": "释义", "mode": "normal"}
+  }
+}
