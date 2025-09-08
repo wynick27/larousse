@@ -18,8 +18,9 @@ import re
 from nicegui import ui, app
 from fastapi.responses import Response
 from difflib import SequenceMatcher
-
+from PIL import Image, ImageOps
 import fitz
+import io
 
 # =============================
 # Global Config State
@@ -30,15 +31,16 @@ CONFIG: dict = {}
 DATA_PATH: Path = Path('')
 OUTPUT_PATH: Path = Path('')
 PDF_PATH: Path = Path('')
-CANDIDATES_PATH: Path = Path('')
+CANDIDATES_CONFIG: Dict = {}
 KEYNAME: str = 'no'
 FIELDS: List[str] = []
 FIELD_LABELS: Dict[str, str] = {}
 FIELD_MODES: Dict[str, str] = {}
 FIELD_PDF_KEYS: Dict[str, str] = {}
-TITLE: str = 'JSON 文本校对工具 (NiceGUI)'
+TITLE: str = 'JSON 文本校对工具 (Larousse)'
 ITEMS_PER_PAGE: int = 1
 AUTOSAVE_SECONDS = 60
+IMAGENAME = None
 
 # 配置 row_mode
 ROW_MODE = bool(CONFIG.get('row_mode', False))
@@ -59,8 +61,8 @@ def get_config_files():
 # =============================
 
 def load_config(path: Path):
-    global CONFIG, DATA_PATH, OUTPUT_PATH, PDF_PATH, CANDIDATES_PATH, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
-    global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, ITEMS_PER_PAGE, store, timer
+    global CONFIG, DATA_PATH, OUTPUT_PATH, PDF_PATH, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
+    global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, IMAGENAME, ITEMS_PER_PAGE, store, timer
 
     with open(path, 'r', encoding='utf-8') as f:
         CONFIG = json.load(f)
@@ -68,8 +70,9 @@ def load_config(path: Path):
     DATA_PATH = Path(CONFIG['input_json'])
     OUTPUT_PATH = Path(CONFIG.get('output_json', DATA_PATH))
     PDF_PATH = Path(CONFIG['input_pdf'])
-    CANDIDATES_PATH = Path(CONFIG['candidate_json'])
+    CANDIDATES_CONFIG = CONFIG['candidates']
     KEYNAME = CONFIG['key_name']
+    IMAGENAME = CONFIG['image_name']
     ITEMS_PER_PAGE = int(CONFIG.get('items_per_page', 1))
 
     field_cfg: dict = CONFIG['field_config']
@@ -85,18 +88,21 @@ def load_config(path: Path):
         pdf_doc = None
 
     # load candidates
-    if CANDIDATES_PATH.exists():
-        with open(CANDIDATES_PATH, 'r', encoding='utf-8') as f:
-            candidates = json.load(f)
-    else:
+
+    if isinstance(CANDIDATES_CONFIG, dict):
         candidates = {}
+        for key, path in CANDIDATES_CONFIG.items():
+            candidate_path = Path(path)
+            if candidate_path.exists():
+                with open(candidate_path, 'r', encoding='utf-8') as f:
+                    candidates[key] = json.load(f)
 
     AUTOSAVE_SECONDS = int(CONFIG.get('autosave_seconds', 60))
     if timer is not None:
         timer.delete()
     if AUTOSAVE_SECONDS > 0:
         timer = ui.timer(AUTOSAVE_SECONDS, save_now)
-    ROW_MODE = bool(CONFIG.get('row_mode', False))
+    ROW_MODE = bool(CONFIG.get('row_mode', True))
 
 
     store = DataStore(DATA_PATH)
@@ -142,12 +148,16 @@ class DataStore:
 store: DataStore
 
 # =============================
-# Candidate Provider (replace with your real impl.)
+# Candidate Provider
 # =============================
 
-def get_candidate(no: int, field_name: str) -> Dict[str, str]:
-    rec = candidates.get(str(no), {})
-    return rec.get(field_name, {}) if rec else {}
+def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
+    result = {}
+    for name, candidate in candidates.items():
+        entry = candidate.get(rec_key)
+        if entry and field_name in entry:
+            result[name] = entry[field_name]
+    return result
 
 # =============================
 # Diff Engine (character-level, no tokenization)
@@ -288,7 +298,7 @@ def render_single_candidate(index:int, field_name: str, source: str, cand_text: 
             ui.label(f'候选来源: {source}').classes('text-primary')
             with ui.row().classes('gap-2'):
                 ui.button('应用全部变化', on_click=lambda: apply_all_from_candidate(index, field_name, cand_text)).props('dense flat')
-                ui.button('恢复为当前文本', on_click=lambda: refresh_record_view()).props('dense flat')
+                #ui.button('恢复为当前文本', on_click=lambda: refresh_record_view()).props('dense flat')
         _render_diff_chunks(index, field_name, original, cand_text, size='normal')
 
 
@@ -369,6 +379,73 @@ def apply_all_from_candidate(index:int, field_name: str, cand_text: str) -> None
 # PDF Image Provider
 # =============================
 
+def merge_image(pdf, positions, direction="vertical", scale = False):
+    """
+    pdf: fitz.Document 对象
+    positions: [{'page': 0, 'bbox': (x0, y0, x1, y1)}, ...]
+    direction: "vertical" or "horizontal"
+    """
+    crops = []
+    
+    for pos in positions:
+        page = pdf[pos["page"]-1]
+        # 获取页面的所有图片
+        img_list = page.get_images(full=True)
+        if not img_list:
+            continue
+        
+        # 取第一个图片
+        xref = img_list[0][0]
+        base_image = pdf.extract_image(xref)
+        img_data = base_image["image"]
+        img = Image.open(io.BytesIO(img_data))
+        img = ImageOps.invert(img)
+        
+        # 注意：PDF 页面和图像坐标可能不一致，通常需要用 matrix 转换
+        # 这里假设第一个图像覆盖整个页面（常见情况：扫描件）
+        # 所以直接按照 bbox 比例在图像上裁剪
+        page_rect = page.rect
+        x0, y0, x1, y1 = pos["bbox"]
+        
+        # 转换 bbox 到图像坐标
+        w, h = img.size
+        if scale:
+            crop_box = (
+                int(x0 / page_rect.width * w),
+                int(y0 / page_rect.height * h),
+                int(x1 / page_rect.width * w),
+                int(y1 / page_rect.height * h),
+            )
+        else:
+            crop_box = (x0, y0, x1, y1)
+        crop_img = img.crop(crop_box)
+        crops.append(crop_img)
+
+    # 拼接图片
+    if not crops:
+        return None
+    
+    if direction == "vertical":
+        total_width = max(img.width for img in crops)
+        total_height = sum(img.height for img in crops)
+        result = Image.new("RGB", (total_width, total_height), (255, 255, 255))
+        
+        y_offset = 0
+        for img in crops:
+            result.paste(img, (0, y_offset))
+            y_offset += img.height
+    else:  # horizontal
+        total_width = sum(img.width for img in crops)
+        total_height = max(img.height for img in crops)
+        result = Image.new("RGB", (total_width, total_height), (255, 255, 255))
+        
+        x_offset = 0
+        for img in crops:
+            result.paste(img, (x_offset, 0))
+            x_offset += img.width
+    
+    return result
+
 @app.get('/get_word_image')
 def get_word_image(index: int, field: str = ''):
     if not pdf_doc:
@@ -376,15 +453,32 @@ def get_word_image(index: int, field: str = ''):
     if index < 0 or index >= len(store.records):
         return Response(status_code=404)
     rec = store.records[index]
-    pdf_key = field
+    pdf_key = IMAGENAME
+    if not field and not pdf_key:
+        return Response(status_code=404)
     page_key = field + '_page' if field else 'page'
     bbox_key = field + '_bbox' if field else 'bbox'
-    if not page_key in rec or not bbox_key in rec:
+    image_field = rec
+    if pdf_key:
+        position = rec.get(pdf_key)
+    if isinstance(position,dict):
+        if not page_key in rec or not bbox_key in rec:
+            return Response(status_code=404)
+        rect = fitz.Rect(*rec[bbox_key])
+        page_no = rec[page_key] - 1
+        pix = pdf_doc[page_no].get_pixmap(clip=rect, dpi=300)
+        return Response(content=pix.tobytes('png'), media_type='image/png')
+    elif isinstance(position,list):
+        pix = merge_image(pdf_doc, position)
+        buffer = io.BytesIO()
+        pix.save(buffer, format="PNG")   # 保存到内存里
+        png_bytes = buffer.getvalue()    # 取出 PNG 字节流
+
+        return Response(content=png_bytes, media_type='image/png')
+    else:
         return Response(status_code=404)
-    rect = fitz.Rect(*rec[bbox_key])
-    page_no = rec[page_key] - 1
-    pix = pdf_doc[page_no].get_pixmap(clip=rect, dpi=300)
-    return Response(content=pix.tobytes('png'), media_type='image/png')
+        
+    
 
 # =============================
 # Layout with Config Loader
@@ -396,24 +490,14 @@ def build_header():
     with ui.header().classes('items-center justify-between') as header:
         ui.label(TITLE).classes('text-h6')
         with ui.row().classes('items-center gap-2'):
-            ui.button('加载配置', on_click=lambda: ui.run_javascript("document.querySelector('#fileInput').click()"),).classes('config-btn')
-            config_files = get_config_files()
-            config_select = ui.select(config_files, value=CONFIG_PATH).props('dense').classes('w-64')
-            config_select.on('change', lambda e: refresh_config(e.value))
-
-            # 上传配置文件的对话框
-            with ui.dialog() as upload_dialog, ui.card():
-                ui.label('上传配置文件')
-                ui.upload(on_upload=lambda e: refresh_config(e.content.read().decode('utf-8')))\
-                   .props('accept=.json')
-                ui.button('关闭', on_click=upload_dialog.close)
+            
             ui.html('<input type="file" id="fileInput" style="display:none" onchange="window.loadConfigFromFile(this)" />')
-            ui.button('⟵ 上一条', on_click=lambda: set_current_index(current_index - ITEMS_PER_PAGE)).props('dense')
-            ui.button('下一条 ⟶', on_click=lambda: set_current_index(current_index + ITEMS_PER_PAGE)).props('dense')
+            ui.button('⟵ 后退', on_click=lambda: set_current_index(current_index - ITEMS_PER_PAGE)).props('dense')
+            ui.button('前进 ⟶', on_click=lambda: set_current_index(current_index + ITEMS_PER_PAGE)).props('dense')
             if store.records:
-                idx_input = ui.number(f'跳转到 {KEYNAME}', value=store.records[current_index][KEYNAME], min=store.records[0][KEYNAME], max=store.records[-1][KEYNAME])
+                idx_input = ui.input(f'跳转到 {KEYNAME}', value=store.records[current_index][KEYNAME])#, min=store.records[0][KEYNAME], max=store.records[-1][KEYNAME])
                 def goto():
-                    no = int(idx_input.value)
+                    no = idx_input.value
                     try:
                         idx = next(i for i, r in enumerate(store.records) if r.get(KEYNAME) == no)
                     except StopIteration:
@@ -436,6 +520,8 @@ def build_layout():
                 break
             rec = store.records[current_index+offset]
             ui.label(f"{KEYNAME}={rec.get(KEYNAME)}").classes('text-h6 text-primary')
+            if IMAGENAME:
+                ui.image(f"/get_word_image?index={current_index+offset}").style("max-width: 400px; height: auto;")
             for f in FIELDS:
                 if FIELD_MODES[f] == 'normal':
                     if FIELD_PDF_KEYS.get(f) != None:
