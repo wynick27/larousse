@@ -52,8 +52,8 @@ def parse_entries(text:str):
             
         elif page_start and re.fullmatch(r'(?i)^\*?[a-zàâçéèêëîïöôûùüÿñæœ \.\-\']+',line):
             pass
-        elif re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)',line) or\
-            not page_start: #and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
+        elif re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
+            not page_start and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
             cur_no += 1
             cur_page_no += 1
             word = {'text': line, 'page': cur_page, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
@@ -170,11 +170,11 @@ def write_brackets_check_results():
         for word in words:
             result = check_brackets(word['text'])
             if result != True:
-                f.write(word['page'] + '\n')
+                f.write(f"{word['page']}\n")
                 f.write(word['text']+ '\n')
                 f.write(result+ '\n')
                 unmatched += 1
-        f.write('括号匹配错误数目：{unmatched}\n')
+        f.write(f'括号匹配错误数目：{unmatched}\n')
        
 
 with open('./拉鲁斯法汉双解词典 文本.txt','r',encoding='utf8') as f:
@@ -188,7 +188,7 @@ word_by_page = split_page(words)
 
 match_image_pos(word_by_page)
  
-
+write_brackets_check_results()
 
 with open('拉鲁斯法汉双解词典_gemini.json','w',encoding='utf8') as f:
     json.dump(words,f, ensure_ascii=False, indent=2)
