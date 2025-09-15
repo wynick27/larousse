@@ -34,6 +34,7 @@ PDF_PATH: Path = Path('')
 CANDIDATES_CONFIG: Dict = {}
 KEYNAME: str = 'no'
 FIELDS: List[str] = []
+FIELD_MAP: Dict[str, dict] = {}
 FIELD_LABELS: Dict[str, str] = {}
 FIELD_MODES: Dict[str, str] = {}
 FIELD_PDF_KEYS: Dict[str, str] = {}
@@ -67,7 +68,7 @@ def get_config_files():
 def load_config(path: Path):
     global CONFIG, DATA_PATH, OUTPUT_PATH, PDF_PATH, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
     global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, IMAGENAME, ITEMS_PER_PAGE, store, timer
-
+    global FIELD_MAP
     with open(path, 'r', encoding='utf-8') as f:
         CONFIG = json.load(f)
 
@@ -79,11 +80,11 @@ def load_config(path: Path):
     IMAGENAME = CONFIG['image_name']
     ITEMS_PER_PAGE = int(CONFIG.get('items_per_page', 1))
 
-    field_cfg: dict = CONFIG['field_config']
-    FIELDS = list(field_cfg.keys())
-    FIELD_LABELS = {k: v['label'] for k, v in field_cfg.items()}
-    FIELD_MODES = {k: v.get('mode', 'normal') for k, v in field_cfg.items()}
-    FIELD_PDF_KEYS = {k: v.get('pdf_key') for k, v in field_cfg.items()}
+    FIELD_MAP = CONFIG['field_config']
+    FIELDS = list(FIELD_MAP.keys())
+    FIELD_LABELS = {k: v['label'] for k, v in FIELD_MAP.items()}
+    FIELD_MODES = {k: v.get('mode', 'normal') for k, v in FIELD_MAP.items()}
+    FIELD_PDF_KEYS = {k: v.get('pdf_key') for k, v in FIELD_MAP.items()}
 
     # load PDF
     if PDF_PATH.exists():
@@ -266,13 +267,13 @@ def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
 # Diff Engine (character-level, no tokenization)
 # =============================
 
-def opcodes_for_diff(a: str, b: str) -> List[Tuple[str, int, int, int, int]]:
-    sm = SequenceMatcher(a=a, b=b, autojunk=False)
+def opcodes_for_diff(a: str, b: str,isjunk = None) -> List[Tuple[str, int, int, int, int]]:
+    sm = SequenceMatcher(a=a, b=b, autojunk=False, isjunk=isjunk)
     return sm.get_opcodes()
 
 
-def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto') -> str:
-    sm = SequenceMatcher(a=a, b=b, autojunk=False)
+def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', isjunk=None) -> str:
+    sm = SequenceMatcher(a=a, b=b, autojunk=False, isjunk=isjunk)
     ops = sm.get_opcodes()
     parts: List[str] = []
     for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
@@ -370,9 +371,15 @@ def _emit_text_with_breaks(text: str, cls: str, on_click=None, show_newline_glyp
             if on_click:
                 el.on('click', on_click)
 
+def get_junk_func(field_name):
+    """返回一个函数，标记哪些字符是“垃圾”，在 diff 计算时忽略它们"""
+
+    if pattern := FIELD_MAP.get(field_name).get("ignore_pattern"):
+        return lambda x:bool(re.match(pattern,x))
+    return None
 
 def _render_diff_chunks(index:int, field_name: str, original: str, cand_text: str, size: str = 'normal'):
-    ops = opcodes_for_diff(original, cand_text)
+    ops = opcodes_for_diff(original, cand_text, get_junk_func(field_name))
     with ui.row().classes('wrap items-start gap-1 ' + ('mono text-sm' if size == 'compact' else 'mono')):
         for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
             if tag == 'equal':
@@ -463,7 +470,7 @@ def render_compact_fields(container: ui.element):
 
 def apply_chunk(index:int, field_name: str, cand_text: str, opcode_index: int, action: str) -> None:
     original = store.records[index][field_name]
-    new_value = apply_single_chunk(original, cand_text, opcode_index, action)
+    new_value = apply_single_chunk(original, cand_text, opcode_index, action, get_junk_func(field_name))
     store.set_field(index, field_name, new_value)
     field_editors[(index,field_name)].value = new_value
     if FIELD_MODES[field_name] == 'normal':
