@@ -47,7 +47,11 @@ ROW_MODE = bool(CONFIG.get('row_mode', False))
 pdf_doc = None
 candidates: dict = {}
 
+store: DataStore
+current_filter = None
+filtered_indices = []
 main_column = None
+record_status_label = None
 compact_container = None
 timer = None
 
@@ -145,8 +149,107 @@ class DataStore:
         self.records[index][field_name] = value
         self.dirty = True
 
-store: DataStore
+def check_brackets(s: str):
+    # 定义所有括号的对应关系
+    brackets = {
+        '(': ')', '[': ']', '{': '}',
+        '（': '）', '【': '】', '｛': '｝',
+        '《': '》', '「': '」', '『': '』',
+        '〔': '〕', '〖': '〗',
+        '⟪': '⟫'
+    }
 
+    opening = set(brackets.keys())
+    closing = set(brackets.values())
+    stack = []
+
+    for idx, char in enumerate(s, start=1):  # 下标从1开始，便于提示
+        if char in opening:  # 左括号入栈
+            stack.append((char, idx))
+        elif char in closing:  # 遇到右括号
+            if not stack:
+                return f"第 {idx} 个字符 '{char}' 没有匹配的左括号"
+            last, pos = stack.pop()
+            if brackets[last] != char:
+                return f"第 {idx} 个字符 '{char}' 与第 {pos} 个字符 '{last}' 不匹配"
+
+    if stack:
+        last, pos = stack[-1]
+        return f"第 {pos} 个字符 '{last}' 没有匹配的右括号"
+
+    return True
+
+def make_filter(f_cfg):
+    """返回一个可调用对象 filter_func(record)->bool"""
+    ftype = f_cfg.get("type")
+    if ftype == "regex":
+        field = f_cfg["field"]
+        pattern = re.compile(f_cfg["pattern"])
+        return lambda r: bool(pattern.search(str(r.get(field, ""))))
+    elif ftype == "paren_match":
+        field = f_cfg["field"]
+        return lambda r: check_brackets(str(r.get(field, ""))) == True
+    elif ftype == "lambda":
+        # 用 eval 动态构造函数（注意安全，配置要可信）
+        code = f_cfg["code"]
+        func = eval(code)
+        if not callable(func):
+            raise ValueError("lambda filter must be callable")
+        return func
+    elif ftype == "candidate_half_mismatch":
+        # 特殊：检查候选来源是否至少一半不一致
+        def _f(r):
+            from difflib import SequenceMatcher
+            result = []
+            for field in FIELDS:
+                cands = get_candidate(r[KEYNAME], field)
+                if cands:
+                    base = r.get(field, "")
+                    for v in cands.values():
+                        sm = SequenceMatcher(None, base, v)
+                        if sm.ratio() < 0.5:
+                            result.append(False)
+                        else:
+                            result.append(True)
+            # True 表示合格 -> 所以要取返回 False 的
+            return all(result) if result else True
+        return _f
+    else:
+        raise ValueError(f"未知过滤器类型: {ftype}")
+
+
+def apply_filter(filter_func):
+    global filtered_indices, current_index
+    filtered_indices = [
+        i for i, r in enumerate(store.records) if not filter_func(r)
+    ]
+    current_index = 0
+    refresh_record_view()
+
+def clear_filter():
+    global filtered_indices, current_index
+    filtered_indices = []
+    current_index = 0
+    refresh_record_view()
+
+def get_visible_index(idx):
+    """返回当前 idx 对应的实际 records 索引"""
+    if filtered_indices:
+        return filtered_indices[idx]
+    return idx
+
+def get_visible_count():
+    return len(filtered_indices) if filtered_indices else len(store.records)
+
+def update_record_status():
+    total = get_visible_count()
+    if total == 0:
+        record_status_label.text = "无记录"
+    elif ITEMS_PER_PAGE == 1:
+        record_status_label.text = f"第 {current_index+1} 条 / 共 {total} 条"
+    else:
+        # current_index 是相对过滤后的索引
+        record_status_label.text = f"第 {current_index+1}-{min(current_index+ITEMS_PER_PAGE,total)} 条 / 共 {total} 条"
 # =============================
 # Candidate Provider
 # =============================
@@ -232,7 +335,8 @@ app.on_shutdown(save_now)
 
 def set_current_index(new_index: int) -> None:
     global current_index
-    current_index = max(0, min(new_index, len(store.records) - 1))
+    max_idx = get_visible_count() - 1
+    current_index = max(0, min(new_index, max_idx))
     refresh_record_view()
 
 
@@ -326,9 +430,10 @@ def render_compact_fields(container: ui.element):
     if not compact_fields:
         return
     for offset in range(ITEMS_PER_PAGE):
-        if current_index + offset >= len(store.records):
+        if current_index + offset >= get_visible_count():
             break
-        rec = store.records[current_index+offset]
+        real_idx = get_visible_index(current_index+offset)
+        rec = store.records[real_idx]
         rec_no = rec[KEYNAME]
         sources: Dict[str, Dict[str, str]] = {}
         for f in compact_fields:
@@ -339,8 +444,8 @@ def render_compact_fields(container: ui.element):
             with ui.row().classes('items-start gap-6'):
                 for f in compact_fields:
                     inp = ui.input(value=rec.get(f, ''), placeholder=f'输入/编辑 {f} 文本…').classes('w-[280px] mono')
-                    inp.on('blur', lambda e, field=f, idx=current_index+offset: update_field(idx, field, e.sender.value))
-                    field_editors[(current_index+offset,f)] = inp
+                    inp.on('blur', lambda e, field=f, idx=real_idx: update_field(idx, field, e.sender.value))
+                    field_editors[(real_idx,f)] = inp
 
             for src, values in sources.items():
                 with ui.row().classes('items-start gap-6'):
@@ -349,8 +454,8 @@ def render_compact_fields(container: ui.element):
                         col = ui.column().classes('w-[280px]')
                         with col:
                             ui.label(f'{src}').classes('text-xs text-primary')
-                            _render_diff_chunks(current_index+offset, f, rec.get(f, ''), cand_text, size='compact')
-                            ui.button('应用全部', on_click=lambda f=f, t=cand_text, idx=current_index+offset: apply_all_from_candidate(idx, f, t)).props('dense flat')
+                            _render_diff_chunks(real_idx, f, rec.get(f, ''), cand_text, size='compact')
+                            ui.button('应用全部', on_click=lambda f=f, t=cand_text, idx=real_idx: apply_all_from_candidate(idx, f, t)).props('dense flat')
 
 # =============================
 # Apply actions
@@ -485,15 +590,28 @@ def get_word_image(index: int, field: str = ''):
 # =============================
 
 def build_header():
-    global main_column
+    global main_column, record_status_label
     main_column = ui.column().classes('w-full')
     with ui.header().classes('items-center justify-between') as header:
         ui.label(TITLE).classes('text-h6')
         with ui.row().classes('items-center gap-2'):
+            filter_options = [("无过滤", None)] + [
+            (f_cfg["title"], make_filter(f_cfg)) for f_cfg in CONFIG.get("filters", [])
+        ]
+            def on_filter_change(e):
+                idx = int(e.value)
+                if idx == 0:
+                    clear_filter()
+                else:
+                    f = filter_options[idx][1]
+                    apply_filter(f)
+            select_filter = ui.select({i: name for i, (name, _) in enumerate(filter_options)},
+                                    label="过滤器", value=0,on_change=on_filter_change)
             
             ui.html('<input type="file" id="fileInput" style="display:none" onchange="window.loadConfigFromFile(this)" />')
             ui.button('⟵ 后退', on_click=lambda: set_current_index(current_index - ITEMS_PER_PAGE)).props('dense')
             ui.button('前进 ⟶', on_click=lambda: set_current_index(current_index + ITEMS_PER_PAGE)).props('dense')
+            record_status_label = ui.label().classes('text-sm')
             if store.records:
                 idx_input = ui.input(f'跳转到 {KEYNAME}', value=store.records[current_index][KEYNAME])#, min=store.records[0][KEYNAME], max=store.records[-1][KEYNAME])
                 def goto():
@@ -516,23 +634,25 @@ def build_layout():
     with main_column:
         compact_container = ui.column().classes('w-full')
         for offset in range(ITEMS_PER_PAGE):
-            if current_index + offset >= len(store.records):
+            if current_index + offset >= get_visible_count():
                 break
-            rec = store.records[current_index+offset]
+            real_idx = get_visible_index(current_index+offset)
+            rec = store.records[real_idx]
             ui.label(f"{KEYNAME}={rec.get(KEYNAME)}").classes('text-h6 text-primary')
             if IMAGENAME:
-                ui.image(f"/get_word_image?index={current_index+offset}").style("max-width: 400px; height: auto;")
+                ui.image(f"/get_word_image?index={real_idx}").style("max-width: 400px; height: auto;")
             for f in FIELDS:
                 if FIELD_MODES[f] == 'normal':
                     if FIELD_PDF_KEYS.get(f) != None:
-                        ui.image(f"/get_word_image?index={current_index+offset}&field={FIELD_PDF_KEYS[f]}")
+                        ui.image(f"/get_word_image?index={real_idx}&field={FIELD_PDF_KEYS[f]}")
                     ui.label(FIELD_LABELS[f]).classes('text-subtitle1')
                     ta = ui.textarea(value=rec.get(f, ''), placeholder=f'输入/编辑 {f} 文本…').classes('w-full mono')
-                    ta.on('blur', lambda e, field_name=f, idx=current_index+offset: update_field(idx, field_name, e.sender.value))
-                    field_editors[(current_index+offset,f)] = ta
-                    field_diff_containers[(current_index+offset,f)] = ui.column().classes('w-full')
-                    render_diffs_for_field(current_index+offset,f)
+                    ta.on('blur', lambda e, field_name=f, idx=real_idx: update_field(idx, field_name, e.sender.value))
+                    field_editors[(real_idx,f)] = ta
+                    field_diff_containers[(real_idx,f)] = ui.column().classes('w-full')
+                    render_diffs_for_field(real_idx,f)
         render_compact_fields(compact_container)
+        update_record_status()
 # =============================
 # Refresh
 def refresh_record_view() -> None:
