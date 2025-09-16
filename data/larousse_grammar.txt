@@ -1,0 +1,56 @@
+start: word+                
+
+word: WORD pron? ("et" WORD pron)? POS+ ("et" POS+)? (link | content) ("◆" WORD? POS+ content)*
+
+content : A_OR_DE? etymology? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
+usage_list: (usage explanation_list)+
+usage: "-"? ROMAN_NUM "." (FR_WORD | FR_SENT ) "[" ZH_SIMPLE "]" ":"?
+explanation_list: (BLACK_NUM explanation)+
+explanation:  PAREN_ENCLOSED? FR ZH_SENT (":" example ("/"? example)*)? encyclopedia*  (/‖|\|\|/ phrase)* rem?
+example:  FR ZH_SENT
+phrase:  FR ZH (":" example ("/" example)*)?
+etymology: PAREN_ENCLOSED ETYM_ZH?
+encyclopedia:ENCYCLOPEDIA
+link: PAREN_ENCLOSED? WORD? "→" WORD "."?
+
+rem: "Rem."  FR ZH (":" example ("/" example)*)?
+pron: PRON ("ou" PRON)?
+A_OR_DE: /\[(à|de)\]/
+
+PRON: /\[.+?\]/
+
+ROMAN_NUM: /[IV]+/
+
+PAREN_ENCLOSED: /\(.+?\)\.?/
+
+BRACKET_ENCLOSED: /\[.+?\]\.?/
+
+ETYM_ZH: /《.+》/
+
+POS: /(?:n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|interj|impers)\./
+
+FR_WORD: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ]+/
+
+FR_SENT: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ,\. ]+/
+
+FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\|\-=+\.,:;«»₂₃%°*\!'\? ]|\((?![\u4e00-\u9fff]).+?\)|\[(?![\u4e00-\u9fff]).+?\])+/
+
+ZH_SIMPLE: /[\u4e00-\u9fff]+/
+
+ZH: /(?:[\u4e00-\u9fff0-9;,“〈〔（…]|(?=\([\u4e00-\u9fff]|\[[\u4e00-\u9fff]))([a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\u4e00-\u9fff0-9;\.,〈〉〔〕（）：？！；…、。\[\]\(\)\/“”?!℃% ]|\([^\)]+?\)|\[[^\)]+?\])*[\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）。”？！!?%](\([^\)]+?\))?|[\u4e00-\u9fff]/
+
+ZH_SENT: /(?:[\u4e00-\u9fff0-9;,“〈〔（…]|(?=\([\u4e00-\u9fff]|\[[\u4e00-\u9fff]))([\u4e00-\u9fff0-9;\.,〈〉〔〕（）：？！；?…、。\[\]\(\)“”!℃% ]|\([^\)]+?\)|\[[^\)]+?\]|(?<=“)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ ]+)*[\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）。”？！!?%\.](\([^\)]+?\))?|[\u4e00-\u9fff]/
+
+ENCYCLOPEDIA: /◇[a-zA-Z0-9ÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\u4e00-\u9fff0-9₂₃—≡:;,。 、.'\(\)]+/
+
+
+BLACK_NUM: /[❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴]/
+
+
+WORD: /([A-Z]\. ?){2,}|([0-9]\. *)?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ'\-]+( [0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+\b(?!\.))*(, *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*/
+
+
+%import common.WS
+
+
+%ignore WS      
