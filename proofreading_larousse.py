@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
 import re
-
+from abc import ABC, abstractmethod
 from nicegui import ui, app
 from fastapi.responses import Response
 from difflib import SequenceMatcher
@@ -28,7 +28,6 @@ import io
 CONFIG_PATH = Path('./data/config.json')
 CONFIG: dict = {}
 
-DATA_PATH: Path = Path('')
 OUTPUT_PATH: Path = Path('')
 PDF_PATH: Path = Path('')
 CANDIDATES_CONFIG: Dict = {}
@@ -48,7 +47,7 @@ ROW_MODE = bool(CONFIG.get('row_mode', False))
 pdf_doc = None
 candidates: dict = {}
 
-store: DataStore
+store: BaseStore
 current_filter = None
 filtered_indices = []
 main_column = None
@@ -66,15 +65,13 @@ def get_config_files():
 # =============================
 
 def load_config(path: Path):
-    global CONFIG, DATA_PATH, OUTPUT_PATH, PDF_PATH, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
+    global CONFIG, OUTPUT_PATH, PDF_PATH, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
     global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, IMAGENAME, ITEMS_PER_PAGE, store, timer
     global FIELD_MAP
     with open(path, 'r', encoding='utf-8') as f:
         CONFIG = json.load(f)
 
-    DATA_PATH = Path(CONFIG['input_json'])
-    OUTPUT_PATH = Path(CONFIG.get('output_json', DATA_PATH))
-    PDF_PATH = Path(CONFIG['input_pdf'])
+    PDF_PATH = CONFIG.get('input_pdf')
     CANDIDATES_CONFIG = CONFIG['candidates']
     KEYNAME = CONFIG['key_name']
     IMAGENAME = CONFIG['image_name']
@@ -87,8 +84,8 @@ def load_config(path: Path):
     FIELD_PDF_KEYS = {k: v.get('pdf_key') for k, v in FIELD_MAP.items()}
 
     # load PDF
-    if PDF_PATH.exists():
-        pdf_doc = fitz.open(str(PDF_PATH))
+    if PDF_PATH and Path(PDF_PATH).exists():
+        pdf_doc = fitz.open(PDF_PATH)
     else:
         pdf_doc = None
 
@@ -109,8 +106,9 @@ def load_config(path: Path):
         timer = ui.timer(AUTOSAVE_SECONDS, save_now)
     ROW_MODE = bool(CONFIG.get('row_mode', True))
 
-
-    store = DataStore(DATA_PATH)
+    input_file = CONFIG.get('input_file')
+    output_file = CONFIG.get('output_file', input_file)
+    store = create_store(input_file, KEYNAME)
     store.load()
 # =============================
 # Data Layer
@@ -132,23 +130,231 @@ def safe_write_json(path: Path, data: List[dict]) -> None:
 
 
 
-@dataclass
-class DataStore:
-    path: Path
-    records: List[dict] = field(default_factory=list)
-    dirty: bool = False
+class BaseStore(ABC):
+    def __init__(self, path_or_cfg, key_name):
+        if isinstance(path_or_cfg, str):
+            self.path = Path(path_or_cfg)
+            self.cfg = {}
+        else:
+            self.path = path_or_cfg['path']
+            self.cfg = path_or_cfg
+        self.key_name = key_name
+        self.records = []
+        self.dirty = False
 
-    def load(self) -> None:
-        self.records = safe_read_json(self.path)
+    @abstractmethod
+    def load(self):
+        ...
 
-    def save(self) -> None:
-        if self.dirty:
-            safe_write_json(OUTPUT_PATH, self.records)
-            self.dirty = False
+    @abstractmethod
+    def save(self,path = None):
+        ...
 
-    def set_field(self, index: int, field_name: str, value: str) -> None:
+    def set_field(self, index: int, field_name: str, value: str):
         self.records[index][field_name] = value
         self.dirty = True
+
+class JsonStore(BaseStore):
+    def load(self):
+        self.records = safe_read_json(self.path)
+
+    def save(self,path = None):
+        if self.dirty:
+            safe_write_json(self.path, self.records)
+            self.dirty = False
+
+class XlsxStore(BaseStore):
+    def load(self):
+        import openpyxl
+        wb = openpyxl.load_workbook(self.path)
+        sheet = wb.active
+        headers = [c.value for c in sheet[1]]
+        self.records = []
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            rec = dict(zip(headers, row))
+            self.records.append(rec)
+
+    def save(self,path = None):
+        import openpyxl
+        if not self.dirty:
+            return
+        wb = openpyxl.Workbook()
+        sheet = wb.active
+        if not self.records:
+            return
+        headers = list(self.records[0].keys())
+        sheet.append(headers)
+        for rec in self.records:
+            sheet.append([rec.get(h, "") for h in headers])
+        wb.save(self.path)
+        self.dirty = False
+
+class DocxStore(BaseStore):
+    def load(self):
+        import docx
+        doc = docx.Document(self.path)
+        self.records = []
+        for i, para in enumerate(doc.paragraphs):
+            self.records.append({self.key_name: i+1, 'text': para.text})
+
+    def save(self,path = None):
+        import docx
+        if not self.dirty:
+            return
+        doc = docx.Document()
+        for rec in self.records:
+            doc.add_paragraph(rec.get('text', ''))
+        doc.save(self.path)
+        self.dirty = False
+
+class PdfStore(BaseStore):
+    def load(self):
+        pdf = fitz.open(self.path)
+        self.records = []
+        for i, page in enumerate(pdf):
+            self.records.append({self.key_name: i+1, 'text': page.get_text(), 'page':i+1})
+
+    def save(self,path = None):
+        # PDF 保存复杂，默认导出为txt
+        if not self.dirty:
+            return
+        txt_path = self.path.with_suffix('.out.txt')
+        with txt_path.open('w', encoding='utf-8') as f:
+            for rec in self.records:
+                f.write(rec.get('text', '') + '\n\n')
+        self.dirty = False
+
+class TxtStore(BaseStore):
+    def __init__(self, cfg, key_name):
+        super().__init__(cfg['path'], key_name)
+        self.start_pat = re.compile(cfg.get('start', r'^'), re.M)
+        self.end_pat = re.compile(cfg.get('end', r'\Z'), re.M)
+        self.split_pat = re.compile(cfg.get('split', r'\n'), re.M)
+        self.page_pat =  re.compile(cfg.get('page'), re.M) if cfg.get('page') else None
+        self.type = cfg.get('type', 'simple')
+        self.fields_cfg = cfg.get('fields', {})
+        self.grammar_path = cfg.get('grammar_path')
+        self.parser = None
+        if self.type == 'grammar' and self.grammar_path:
+            grammar_text = Path(self.grammar_path).read_text(encoding='utf-8')
+            self.parser = Lark(grammar_text, parser='lalr')
+
+        self.prefix = ''
+        self.suffix = ''
+
+    def load(self):
+        text = Path(self.path).read_text(encoding='utf-8')
+
+        # 定位 start / end
+        start_match = self.start_pat.search(text)
+        end_match = self.end_pat.search(text)
+        start_idx = start_match.end() if start_match else 0
+        end_idx = end_match.start() if end_match else len(text)
+
+        self.prefix = text[:start_idx]
+        self.suffix = text[end_idx:]
+        core_text = text[start_idx:end_idx]
+
+        # 分割 + 保留分隔符
+        self.records = []
+        last_pos = 0
+        cur_page = 0
+        cur_num = 0
+
+        for i, match in enumerate(self.split_pat.finditer(core_text)):
+            segment = core_text[last_pos:match.start()]
+            if self.page_pat and self.page_pat.match(segment):
+                match = self.page_pat.match(segment)
+                if cur_page != int(match.group(1)):
+                    cur_num = 0
+                cur_page = int(match.group(1))
+                continue
+            rec = {"no_page": cur_num+1, '_raw': segment, '_separator': match.group(0)}
+            self.records.append(rec)
+            if self.page_pat:
+                rec['page'] = cur_page
+            last_pos = match.end()
+            cur_num += 1
+
+        # 最后一个片段
+        if last_pos < len(core_text):
+            rec = {"no_page": cur_num+1, '_raw': core_text[last_pos:], '_separator': ''}
+            if self.page_pat:
+                rec['page'] = cur_page
+            self.records.append(rec)
+
+        for i, rec in enumerate(self.records):
+            seg = rec['_raw']
+            if self.type == 'grammar' and self.parser:
+                
+                tree: Tree = self.parser.parse(seg)
+                rec['_tree'] = tree
+                for child in tree.children:
+                    if isinstance(child, Tree):
+                        rec[child.data] = seg[child.meta.start_pos:child.meta.end_pos]
+            elif self.type == 'simple':
+                for fname, regex in self.fields_cfg.items():
+                    for m in re.finditer(regex, seg, re.M):
+                        rec.setdefault('_matches', {})[fname] = (m.start(), m.end(), m.group(0))
+                        rec[fname] = m.group(1) if m.groups() else m.group(0)
+                rec['text'] = seg
+            self.records.append(rec)
+
+    def set_field(self, index: int, field_name: str, value: str):
+        rec = self.records[index]
+        if self.type == 'simple' and '_matches' in rec and field_name in rec['_matches']:
+            start, end, old = rec['_matches'][field_name]
+            raw = rec['_raw']
+            rec['_raw'] = raw[:start] + value + raw[end:]
+            rec['_matches'][field_name] = (start, start+len(value), value)
+        elif self.type == 'grammar' and '_tree' in rec:
+            # 找到对应子树位置替换
+            tree: Tree = rec['_tree']
+            new_text = list(rec['_raw'])
+            for child in tree.children:
+                if isinstance(child, Tree) and child.data == field_name:
+                    s, e = child.meta.start_pos, child.meta.end_pos
+                    new_text[s:e] = value
+                    child.meta.start_pos, child.meta.end_pos = s, s+len(value)
+            rec['_raw'] = ''.join(new_text)
+        else:
+            rec['_raw'] = value
+        rec[field_name] = value
+        self.dirty = True
+
+    def save(self,path = None):
+        if not self.dirty:
+            return
+        rebuilt_segments = [rec['_raw'] for rec in self.records]
+        out = []
+        for i, seg in enumerate(rebuilt_segments):
+            out.append(seg)
+            if i < len(self.separators):
+                out.append(self.separators[i])
+        final_text = self.prefix + ''.join(out) + self.suffix
+        Path(self.path).write_text(final_text, encoding='utf-8')
+        self.dirty = False
+
+
+
+def create_store(path_or_cfg, key_name: str) -> BaseStore:
+    if isinstance(path_or_cfg, str):
+        path = path_or_cfg
+    else:
+        path = path_or_cfg['path']
+    ext = Path(path).suffix.lower()
+    if ext == '.json':
+        return JsonStore(path_or_cfg, key_name)
+    elif ext == '.xlsx':
+        return XlsxStore(path_or_cfg, key_name)
+    elif ext == '.docx':
+        return DocxStore(path_or_cfg, key_name)
+    elif ext == '.pdf':
+        return PdfStore(path_or_cfg, key_name)
+    elif ext == '.txt':
+        return TxtStore(path_or_cfg, key_name)
+    else:
+        raise ValueError(f'不支持的文件类型: {ext}')
 
 def check_brackets(s: str):
     # 定义所有括号的对应关系
@@ -267,14 +473,23 @@ def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
 # Diff Engine (character-level, no tokenization)
 # =============================
 
-def opcodes_for_diff(a: str, b: str,isjunk = None) -> List[Tuple[str, int, int, int, int]]:
-    sm = SequenceMatcher(a=a, b=b, autojunk=False, isjunk=isjunk)
-    return sm.get_opcodes()
-
-
-def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', isjunk=None) -> str:
-    sm = SequenceMatcher(a=a, b=b, autojunk=False, isjunk=isjunk)
+def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, int, int, int, int]]:
+    sm = SequenceMatcher(a=a, b=b, autojunk=False)
     ops = sm.get_opcodes()
+    filtered_ops = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        a_chunk = sm.a[i1:i2]
+        b_chunk = sm.b[j1:j2]
+        # 如果差异完全由 ignore_re 匹配的字符组成，直接当作 equal
+        if tag != "equal" and re.sub(ignore_pattern,"",a_chunk) == re.sub(ignore_pattern,"",b_chunk):
+            filtered_ops.append(("equal", i1, i2, j1, j2))
+        else:
+            filtered_ops.append((tag, i1, i2, j1, j2))
+    return filtered_ops
+
+
+def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', ignore_pattern=None) -> str:
+    ops = opcodes_for_diff(a,b,ignore_pattern)
     parts: List[str] = []
     for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
         if tag == 'equal':
@@ -371,15 +586,14 @@ def _emit_text_with_breaks(text: str, cls: str, on_click=None, show_newline_glyp
             if on_click:
                 el.on('click', on_click)
 
-def get_junk_func(field_name):
-    """返回一个函数，标记哪些字符是“垃圾”，在 diff 计算时忽略它们"""
-
+def get_ignore_pattern(field_name):
+    
     if pattern := FIELD_MAP.get(field_name).get("ignore_pattern"):
-        return lambda x:bool(re.match(pattern,x))
+        return pattern
     return None
 
 def _render_diff_chunks(index:int, field_name: str, original: str, cand_text: str, size: str = 'normal'):
-    ops = opcodes_for_diff(original, cand_text, get_junk_func(field_name))
+    ops = opcodes_for_diff(original, cand_text, get_ignore_pattern(field_name))
     with ui.row().classes('wrap items-start gap-1 ' + ('mono text-sm' if size == 'compact' else 'mono')):
         for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
             if tag == 'equal':
@@ -470,7 +684,7 @@ def render_compact_fields(container: ui.element):
 
 def apply_chunk(index:int, field_name: str, cand_text: str, opcode_index: int, action: str) -> None:
     original = store.records[index][field_name]
-    new_value = apply_single_chunk(original, cand_text, opcode_index, action, get_junk_func(field_name))
+    new_value = apply_single_chunk(original, cand_text, opcode_index, action, get_ignore_pattern(field_name))
     store.set_field(index, field_name, new_value)
     field_editors[(index,field_name)].value = new_value
     if FIELD_MODES[field_name] == 'normal':
