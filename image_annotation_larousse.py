@@ -9,7 +9,7 @@ from sklearn.cluster import KMeans
 # -----------------------------
 # 配置参数（需要时调整）
 # -----------------------------
-PDF_PATH = "./拉鲁斯法汉双解词典.pdf"
+PDF_PATH = "./data/拉鲁斯法汉双解词典.pdf"
 PAGE_NUMBER = 70  # 0-based index
 MIN_WORD_HEIGHT = 5      # 忽略过小噪点（行高度最小）
 HEADER_ROW_RATIO = 0.6   # 顶部行黑色像素比例高于这个值认为是页眉/横线
