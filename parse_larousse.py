@@ -45,7 +45,7 @@ def parse_entries(text:str):
     for line in lines:
         if not line.strip():
             continue
-        if match := re.match('〈(\d+)〉',line):
+        if match := re.match(r'〈(\d+)〉',line):
             cur_page = int(match.group(1))
             page_start = True
             cur_page_no = 0
@@ -83,6 +83,7 @@ def parse_entries(text:str):
 
 def match_image_pos(words):
     errorlist = []
+
     for page,words_in_page in enumerate(words,1):
         if not os.path.exists(f'./json/page_{page+70:04}.json'):
             print(f'page {page} 标注未找到')
@@ -129,8 +130,28 @@ def match_image_pos(words):
 
     print(errorlist)
 
-
-
+def combine_image_pos():
+    word_pos = []
+    for page in range(1,2058):
+        if not os.path.exists(f'./json/page_{page+70:04}.json'):
+            print(f'page {page} 标注未找到')
+        with open(f'./json/page_{page+70:04}.json') as f:
+            annotation = json.load(f)
+        entries = []
+        cur_no = 1
+        for index, entry in enumerate(annotation['entries']):
+            position_info = {'page':page+70, 'bbox':entry['coords']}
+            if entry['is_headword']:
+                word_pos.append({"id":f"{page}.{cur_no}","page":page,"position":[position_info]})
+                cur_no += 1
+            else:
+                
+                if word_pos:
+                    last_entry = word_pos[-1]
+                    last_entry["position"].append(position_info)
+                else:
+                    word_pos.append({"id":f"{page}.0","page":page,"position":[position_info]})
+    return word_pos
 
 def split_page(words):
     current_page = 0
@@ -186,9 +207,11 @@ words = parse_entries(text)
 
 word_by_page = split_page(words)
 
-match_image_pos(word_by_page)
- 
-write_brackets_check_results()
+word_pos = combine_image_pos()
+
+with open('image_pos.json','w',encoding='utf8') as f:
+    json.dump(word_pos,f, ensure_ascii=False, indent=2)
+#write_brackets_check_results()
 
 with open('拉鲁斯法汉双解词典_gemini.json','w',encoding='utf8') as f:
     json.dump(words,f, ensure_ascii=False, indent=2)

@@ -40,11 +40,9 @@ FIELD_PDF_KEYS: Dict[str, str] = {}
 TITLE: str = 'JSON 文本校对工具 (Larousse)'
 ITEMS_PER_PAGE: int = 1
 AUTOSAVE_SECONDS = 60
-IMAGENAME = None
 
 # 配置 row_mode
 ROW_MODE = bool(CONFIG.get('row_mode', False))
-pdf_doc = None
 candidates: dict = {}
 
 store: BaseStore
@@ -66,14 +64,16 @@ def get_config_files():
 
 def load_config(path: Path):
     global CONFIG, OUTPUT_PATH, IMAGE_CONFIG, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
-    global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, IMAGENAME, ITEMS_PER_PAGE, store, timer
+    global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, candidates, image_source, ITEMS_PER_PAGE, store, timer
     global FIELD_MAP
     with open(path, 'r', encoding='utf-8') as f:
         CONFIG = json.load(f)
-
-    IMAGE_CONFIG = CONFIG.get('images')
-    CANDIDATES_CONFIG = CONFIG['candidates']
     KEYNAME = CONFIG['key_name']
+    IMAGE_CONFIG = CONFIG.get('image_source')
+    if IMAGE_CONFIG:
+        image_source = ImageSource(IMAGE_CONFIG)
+    CANDIDATES_CONFIG = CONFIG['candidates']
+    
     ITEMS_PER_PAGE = int(CONFIG.get('items_per_page', 1))
 
     FIELD_MAP = CONFIG['field_config']
@@ -134,14 +134,46 @@ class ImageSource:
             self.pdf_doc = fitz.open(self.path)
         else:
             raise ValueError(f'不支持的图片类型: {self.type}')
+        position_source = cfg.get('position_source')
+        if position_source:
+            self.position_store = safe_read_json(position_source)
+        self.position_key = cfg.get('position_key','position')
+        
+    def get_position(self, key: str, field:str = None) -> dict | List[dict] | None:
+        if self.position_store:
+            positions = [r for r in self.position_store if r.get(KEYNAME) == key]
+            if not positions:
+                return None
+            if len(positions) == 1:
+                return positions[0]
+            return positions
+        return None
+    
 
-    def get_image(self, key: str) -> Image.Image | None:
+    def get_image(self, key: str, field:str = None) -> Image.Image | None:
+        position = self.get_position(key, field)[self.position_key]
+        if isinstance(position,dict):
+        #if not page_key in rec or not bbox_key in rec:
+        #    return Response(status_code=404)
+            bbox_key = f"{field}_bbox" if field else "bbox"
+            page_key = f"{field}_page" if field else "page"
+            rect = fitz.Rect(*position[bbox_key])
+            page_no = position[page_key] - 1
+            pix = self.get_image_by_page(page_no)
+            return pix
+        elif isinstance(position,list):
+            pix = merge_image(self.pdf_doc, position)
+            buffer = io.BytesIO()
+            pix.save(buffer, format="PNG")   # 保存到内存里
+            png_bytes = buffer.getvalue()    # 取出 PNG 字节流
+            return png_bytes
+    def get_image_by_page(self, page_num:int) -> Image.Image | None:
         if self.type == 'dir':
-            img_path = self.path / key
+            img_path = self.path / f"{page_num:04}.png"
             if img_path.exists() and img_path.is_file():
                 try:
                     img = Image.open(img_path)
-                    img = ImageOps.exif_transpose(img)
+                    #img = ImageOps.exif_transpose(img)
                     return img
                 except Exception as e:
                     print(f'无法打开图片 {img_path}: {e}')
@@ -150,7 +182,6 @@ class ImageSource:
                 return None
         elif self.type == 'pdf':
             try:
-                page_num = int(key)
                 if 0 <= page_num < len(self.pdf_doc):
                     page = self.pdf_doc[page_num]
                     pix = page.get_pixmap()
@@ -160,7 +191,7 @@ class ImageSource:
                 else:
                     return None
             except Exception as e:
-                print(f'无法从PDF获取图片 {key}: {e}')
+                print(f'无法从PDF获取图片 {page_num}: {e}')
                 return None
         return None
 
@@ -940,28 +971,12 @@ def get_word_image(index: int, field: str = ''):
     if index < 0 or index >= len(store.records):
         return Response(status_code=404)
     rec = store.records[index]
-    pdf_key = IMAGENAME
-    if not field and not pdf_key:
-        return Response(status_code=404)
     page_key = field + '_page' if field else 'page'
     bbox_key = field + '_bbox' if field else 'bbox'
     image_field = rec
-    if pdf_key:
-        position = rec.get(pdf_key)
-    if isinstance(position,dict):
-        if not page_key in rec or not bbox_key in rec:
-            return Response(status_code=404)
-        rect = fitz.Rect(*rec[bbox_key])
-        page_no = rec[page_key] - 1
-        pix = pdf_doc[page_no].get_pixmap(clip=rect, dpi=300)
-        return Response(content=pix.tobytes('png'), media_type='image/png')
-    elif isinstance(position,list):
-        pix = merge_image(pdf_doc, position)
-        buffer = io.BytesIO()
-        pix.save(buffer, format="PNG")   # 保存到内存里
-        png_bytes = buffer.getvalue()    # 取出 PNG 字节流
-
-        return Response(content=png_bytes, media_type='image/png')
+    image_data = image_source.get_image(rec[KEYNAME])
+    if image_data:
+        return Response(content=image_data, media_type='image/png')
     else:
         return Response(status_code=404)
         
@@ -1023,7 +1038,7 @@ def build_layout():
             real_idx = get_visible_index(current_index+offset)
             rec = store.records[real_idx]
             ui.label(f"{KEYNAME}={rec.get(KEYNAME)}").classes('text-h6 text-primary')
-            if IMAGENAME:
+            if image_source.get_position(rec.get(KEYNAME)):
                 ui.image(f"/get_word_image?index={real_idx}").style("max-width: 400px; height: auto;")
             for f in FIELDS:
                 if FIELD_MODES[f] == 'normal':

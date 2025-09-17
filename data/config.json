@@ -4,7 +4,7 @@
   "key_name": "id",
   "image_source":{
 	  "type":"pdf",
-	  "input_pdf": "./data/拉鲁斯法汉双解词典.pdf",
+	  "path": "./data/拉鲁斯法汉双解词典.pdf",
 	  "position_source": "./data/image_pos.json",
 	  "position_key": "position"
   },
