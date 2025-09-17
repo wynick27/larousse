@@ -48,7 +48,7 @@ pdf_doc = None
 candidates: dict = {}
 
 store: BaseStore
-current_filter = None
+filter_candidate = None
 filtered_indices = []
 main_column = None
 record_status_label = None
@@ -82,21 +82,15 @@ def load_config(path: Path):
     FIELD_MODES = {k: v.get('mode', 'normal') for k, v in FIELD_MAP.items()}
     FIELD_PDF_KEYS = {k: v.get('pdf_key') for k, v in FIELD_MAP.items()}
 
-    # load PDF
-    #if PDF_PATH and Path(PDF_PATH).exists():
-    #    pdf_doc = fitz.open(PDF_PATH)
-    #else:
-    #    pdf_doc = None
-
     # load candidates
-
     if isinstance(CANDIDATES_CONFIG, dict):
         candidates = {}
-        for key, path in CANDIDATES_CONFIG.items():
-            candidate_path = Path(path)
-            if candidate_path.exists():
-                with open(candidate_path, 'r', encoding='utf-8') as f:
-                    candidates[key] = json.load(f)
+        for key, path_or_cfg in CANDIDATES_CONFIG.items():
+            candidate_store = create_store(path_or_cfg, KEYNAME)
+            if candidate_store:
+                candidate_store.load()
+                candidates[key] = candidate_store
+                    
 
     AUTOSAVE_SECONDS = int(CONFIG.get('autosave_seconds', 60))
     if timer is not None:
@@ -106,7 +100,7 @@ def load_config(path: Path):
     ROW_MODE = bool(CONFIG.get('row_mode', True))
 
     input_file = CONFIG.get('input_file')
-    output_file = CONFIG.get('output_file', input_file)
+    OUTPUT_PATH = CONFIG.get('output_file', input_file)
     store = create_store(input_file, KEYNAME)
     store.load()
 # =============================
@@ -128,9 +122,9 @@ def safe_write_json(path: Path, data: List[dict]) -> None:
 
 class ImageSource:
     def __init__(self, cfg: dict):
-        self.type = cfg.get('type', 'dir')
         self.path = Path(cfg['path'])
         self.cfg = cfg
+        self.type = "dir" if self.path.is_dir() else "pdf" if self.path.suffix.lower() == '.pdf' else None
         if self.type == 'dir':
             if not self.path.exists() or not self.path.is_dir():
                 raise ValueError(f'图片目录不存在: {self.path}')
@@ -195,14 +189,30 @@ class BaseStore(ABC):
         self.records[index][field_name] = value
         self.dirty = True
 
+    def get(self, key_value):
+        for rec in self.records:
+            if rec.get(self.key_name) == key_value:
+                return rec
+        return None
+
 class JsonStore(BaseStore):
     def load(self):
-        self.records = safe_read_json(self.path)
+        self.data = safe_read_json(self.path)
+        if isinstance(self.data,list):
+            self.records = self.data
+        elif isinstance(self.data,dict):
+            for value in self.data.values():
+                self.records.append(value)
 
     def save(self,path = None):
         if self.dirty:
-            safe_write_json(self.path, self.records)
+            safe_write_json(self.path, self.data)
             self.dirty = False
+
+    def get(self, key_value):
+        if isinstance(self.data,dict):
+            return self.data.get(key_value)
+        return BaseStore.get(self,key_value)
 
 class XlsxStore(BaseStore):
     def load(self):
@@ -245,7 +255,7 @@ class DocxStore(BaseStore):
         doc = docx.Document()
         for rec in self.records:
             doc.add_paragraph(rec.get('text', ''))
-        doc.save(self.path)
+        doc.save(path)
         self.dirty = False
 
 class PdfStore(BaseStore):
@@ -259,7 +269,7 @@ class PdfStore(BaseStore):
         # PDF 保存复杂，默认导出为txt
         if not self.dirty:
             return
-        txt_path = self.path.with_suffix('.out.txt')
+        txt_path = path.with_suffix('.out.txt')
         with txt_path.open('w', encoding='utf-8') as f:
             for rec in self.records:
                 f.write(rec.get('text', '') + '\n\n')
@@ -373,7 +383,7 @@ class TxtStore(BaseStore):
             if i < len(self.separators):
                 out.append(self.separators[i])
         final_text = self.prefix + ''.join(out) + self.suffix
-        Path(self.path).write_text(final_text, encoding='utf-8')
+        Path(path).write_text(final_text, encoding='utf-8')
         self.dirty = False
 
 class LarousseTxtStore(BaseStore):
@@ -399,7 +409,7 @@ class LarousseTxtStore(BaseStore):
         for line_no,line in enumerate(self.lines):
             if not line.strip():
                 continue
-            if match := re.match('〈(\d+)〉',line):
+            if match := re.match(r'〈(\d+)〉',line):
                 cur_page = int(match.group(1))
                 page_start = True
                 cur_page_no = 0
@@ -438,11 +448,11 @@ class LarousseTxtStore(BaseStore):
         for rec in self.records:
             if isinstance(rec['line'],list):
                 for line_no,text in zip(rec['line'],rec['text'].splitlines()):
-                    self.lines[line_no] = rec['text']
+                    self.lines[line_no] = text
             else:
                 self.lines[rec['line']] = rec['text']
         final_text = self.prefix + '\n'.join(self.lines)
-        Path(self.path).write_text(final_text, encoding='utf-8')
+        Path(path).write_text(final_text, encoding='utf-8')
         self.dirty = False
 
 store_extension_map = {
@@ -470,36 +480,53 @@ def create_store(path_or_cfg, key_name: str) -> BaseStore:
         return store_extension_map[ext](path_or_cfg, key_name)
     else:
         raise ValueError(f'不支持的文件类型: {ext}')
-
+brackets = {
+    '(': ')', '[': ']', '{': '}',
+    '（': '）', '【': '】', '｛': '｝',
+    '《': '》', '「': '」', '『': '』',
+    '〔': '〕', '〖': '〗',
+    '⟪': '⟫'
+}
+reverse_brackets = {value:key for key,value in brackets.items()}
 def check_brackets(s: str):
     # 定义所有括号的对应关系
-    brackets = {
-        '(': ')', '[': ']', '{': '}',
-        '（': '）', '【': '】', '｛': '｝',
-        '《': '》', '「': '」', '『': '』',
-        '〔': '〕', '〖': '〗',
-        '⟪': '⟫'
-    }
-
     opening = set(brackets.keys())
     closing = set(brackets.values())
     stack = []
 
-    for idx, char in enumerate(s, start=1):  # 下标从1开始，便于提示
+    errors = []
+
+    for idx, char in enumerate(s):  # 下标从1开始，便于提示
         if char in opening:  # 左括号入栈
             stack.append((char, idx))
         elif char in closing:  # 遇到右括号
             if not stack:
-                return f"第 {idx} 个字符 '{char}' 没有匹配的左括号"
+                errors.append(('noleft',0,reverse_brackets[char],idx,char))
+                continue
+                #return f"第 {idx} 个字符 '{char}' 没有匹配的左括号"
             last, pos = stack.pop()
             if brackets[last] != char:
-                return f"第 {idx} 个字符 '{char}' 与第 {pos} 个字符 '{last}' 不匹配"
+                errors.append(('nomatch',pos,last,idx,char))
+                #return f"第 {idx} 个字符 '{char}' 与第 {pos} 个字符 '{last}' 不匹配"
 
-    if stack:
-        last, pos = stack[-1]
-        return f"第 {pos} 个字符 '{last}' 没有匹配的右括号"
+    while stack:
+        last, pos = stack.pop()
+        errors.append(('noright',pos,last,idx,brackets[last]))
+        #return f"第 {pos} 个字符 '{last}' 没有匹配的右括号"
 
-    return True
+    return errors
+def gen_bracket_fix_candidate(text):
+    result = check_brackets(text)
+    if not result:
+        return text
+    chars = list(text)
+    for t,lpos,lchar,rpos,rchar in result:
+        if t == 'nomatch':
+            chars[rpos] = brackets[lchar]
+            chars[lpos] = reverse_brackets[rchar]
+    return ''.join(chars)
+
+
 
 def make_filter(f_cfg):
     """返回一个可调用对象 filter_func(record)->bool"""
@@ -510,7 +537,7 @@ def make_filter(f_cfg):
         return lambda r: bool(pattern.search(str(r.get(field, ""))))
     elif ftype == "paren_match":
         field = f_cfg["field"]
-        return lambda r: check_brackets(str(r.get(field, ""))) == True
+        return lambda r: bool(check_brackets(str(r.get(field, ""))))
     elif ftype == "lambda":
         # 用 eval 动态构造函数（注意安全，配置要可信）
         code = f_cfg["code"]
@@ -529,7 +556,7 @@ def make_filter(f_cfg):
                     base = r.get(field, "")
                     for v in cands.values():
                         sm = SequenceMatcher(None, base, v)
-                        if sm.ratio() < 0.5:
+                        if sm.ratio() < 0.9:
                             result.append(False)
                         else:
                             result.append(True)
@@ -539,19 +566,34 @@ def make_filter(f_cfg):
     else:
         raise ValueError(f"未知过滤器类型: {ftype}")
 
+def make_filter_candidate(f_cfg):
+    ftype = f_cfg.get("type")
+    if ftype == "regex":
+        field = f_cfg["field"]
+        f_cfg["pattern"]
+        replace = f_cfg.get('replace')
+        if replace:
+            pattern = re.compile(f_cfg["pattern"])
+        return lambda r: pattern.sub(replace,str(r.get(field, "")))
+    elif ftype == "paren_match":
+        field = f_cfg["field"]
+        
+        return lambda r: gen_bracket_fix_candidate(str(r.get(field, "")))
+    return None
 
 def apply_filter(filter_func):
     global filtered_indices, current_index
     filtered_indices = [
-        i for i, r in enumerate(store.records) if not filter_func(r)
+        i for i, r in enumerate(store.records) if filter_func(r)
     ]
     current_index = 0
     refresh_record_view()
 
 def clear_filter():
-    global filtered_indices, current_index
+    global filtered_indices, current_index, filter_candidate
     filtered_indices = []
     current_index = 0
+    filter_candidate = None
     refresh_record_view()
 
 def get_visible_index(idx):
@@ -578,10 +620,12 @@ def update_record_status():
 
 def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
     result = {}
+    if filter_candidate:
+         result["过滤器"] = filter_candidate(store.get(rec_key))
     for name, candidate in candidates.items():
-        entry = candidate.get(rec_key)
-        if entry and field_name in entry:
-            result[name] = entry[field_name]
+        record = candidate.get(rec_key)
+        if record and field_name in record:
+            result[name] = record[field_name]
     return result
 
 # =============================
@@ -933,17 +977,19 @@ def build_header():
     with ui.header().classes('items-center justify-between') as header:
         ui.label(TITLE).classes('text-h6')
         with ui.row().classes('items-center gap-2'):
-            filter_options = [("无过滤", None)] + [
-            (f_cfg["title"], make_filter(f_cfg)) for f_cfg in CONFIG.get("filters", [])
+            filter_options = [("无过滤", None, None)] + [
+            (f_cfg["title"], make_filter(f_cfg), make_filter_candidate(f_cfg)) for f_cfg in CONFIG.get("filters", [])
         ]
             def on_filter_change(e):
+                global filter_candidate
                 idx = int(e.value)
+                filter_candidate = filter_options[idx][2]
                 if idx == 0:
                     clear_filter()
                 else:
                     f = filter_options[idx][1]
                     apply_filter(f)
-            select_filter = ui.select({i: name for i, (name, _) in enumerate(filter_options)},
+            select_filter = ui.select({i: name for i, (name, _, _) in enumerate(filter_options)},
                                     label="过滤器", value=0,on_change=on_filter_change)
             
             ui.html('<input type="file" id="fileInput" style="display:none" onchange="window.loadConfigFromFile(this)" />')
