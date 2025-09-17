@@ -1,9 +1,14 @@
 {
-  "input_json": "./data/拉鲁斯法汉双解词典_gemini.json",
-  "output_json": "./data/拉鲁斯法汉双解词典_output.json",
+  "input_file": {"path":"./拉鲁斯法汉双解词典 文本.txt","type":"larousse"},
+  "output_file": "./data/拉鲁斯法汉双解词典 文本.txt",
   "key_name": "id",
-  "image_name": "position",
-  "input_pdf": "./data/拉鲁斯法汉双解词典.pdf",
+  "image_source":{
+	  "type":"pdf",
+	  "input_pdf": "./data/拉鲁斯法汉双解词典.pdf",
+	  "position_source": "./data/image_pos.json",
+	  "position_key": "position"
+  },
+  
   "candidates": {
 	  "textin": "./data/textin.json",
 	  "quark": "./data/quark.json",

@@ -29,7 +29,7 @@ CONFIG_PATH = Path('./data/config.json')
 CONFIG: dict = {}
 
 OUTPUT_PATH: Path = Path('')
-PDF_PATH: Path = Path('')
+IMAGE_CONFIG: dict = None
 CANDIDATES_CONFIG: Dict = {}
 KEYNAME: str = 'no'
 FIELDS: List[str] = []
@@ -54,7 +54,7 @@ main_column = None
 record_status_label = None
 compact_container = None
 timer = None
-
+image_source: ImageSource = None
 
 def get_config_files():
     config_dir = Path('./config')
@@ -65,16 +65,15 @@ def get_config_files():
 # =============================
 
 def load_config(path: Path):
-    global CONFIG, OUTPUT_PATH, PDF_PATH, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
+    global CONFIG, OUTPUT_PATH, IMAGE_CONFIG, CANDIDATES_CONFIG, KEYNAME,ROW_MODE,AUTOSAVE_SECONDS
     global FIELDS, FIELD_LABELS, FIELD_MODES, FIELD_PDF_KEYS, pdf_doc, candidates, IMAGENAME, ITEMS_PER_PAGE, store, timer
     global FIELD_MAP
     with open(path, 'r', encoding='utf-8') as f:
         CONFIG = json.load(f)
 
-    PDF_PATH = CONFIG.get('input_pdf')
+    IMAGE_CONFIG = CONFIG.get('images')
     CANDIDATES_CONFIG = CONFIG['candidates']
     KEYNAME = CONFIG['key_name']
-    IMAGENAME = CONFIG['image_name']
     ITEMS_PER_PAGE = int(CONFIG.get('items_per_page', 1))
 
     FIELD_MAP = CONFIG['field_config']
@@ -84,10 +83,10 @@ def load_config(path: Path):
     FIELD_PDF_KEYS = {k: v.get('pdf_key') for k, v in FIELD_MAP.items()}
 
     # load PDF
-    if PDF_PATH and Path(PDF_PATH).exists():
-        pdf_doc = fitz.open(PDF_PATH)
-    else:
-        pdf_doc = None
+    #if PDF_PATH and Path(PDF_PATH).exists():
+    #    pdf_doc = fitz.open(PDF_PATH)
+    #else:
+    #    pdf_doc = None
 
     # load candidates
 
@@ -127,7 +126,49 @@ def safe_write_json(path: Path, data: List[dict]) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     tmp.replace(path)
 
+class ImageSource:
+    def __init__(self, cfg: dict):
+        self.type = cfg.get('type', 'dir')
+        self.path = Path(cfg['path'])
+        self.cfg = cfg
+        if self.type == 'dir':
+            if not self.path.exists() or not self.path.is_dir():
+                raise ValueError(f'图片目录不存在: {self.path}')
+        elif self.type == 'pdf':
+            if not self.path.exists() or not self.path.is_file():
+                raise ValueError(f'图片PDF文件不存在: {self.path}')
+            self.pdf_doc = fitz.open(self.path)
+        else:
+            raise ValueError(f'不支持的图片类型: {self.type}')
 
+    def get_image(self, key: str) -> Image.Image | None:
+        if self.type == 'dir':
+            img_path = self.path / key
+            if img_path.exists() and img_path.is_file():
+                try:
+                    img = Image.open(img_path)
+                    img = ImageOps.exif_transpose(img)
+                    return img
+                except Exception as e:
+                    print(f'无法打开图片 {img_path}: {e}')
+                    return None
+            else:
+                return None
+        elif self.type == 'pdf':
+            try:
+                page_num = int(key)
+                if 0 <= page_num < len(self.pdf_doc):
+                    page = self.pdf_doc[page_num]
+                    pix = page.get_pixmap()
+                    img_data = pix.tobytes("png")
+                    img = Image.open(io.BytesIO(img_data))
+                    return img
+                else:
+                    return None
+            except Exception as e:
+                print(f'无法从PDF获取图片 {key}: {e}')
+                return None
+        return None
 
 
 class BaseStore(ABC):
@@ -335,7 +376,86 @@ class TxtStore(BaseStore):
         Path(self.path).write_text(final_text, encoding='utf-8')
         self.dirty = False
 
+class LarousseTxtStore(BaseStore):
+    def load(self):
+        text = Path(self.path).read_text(encoding='utf-8')
 
+        start_pos = text.find('〈1〉')
+        
+        self.prefix = text[:start_pos]
+        core_text = text[start_pos:]
+        self.lines = core_text.splitlines()
+
+        # 分割 + 保留分隔符
+        self.records = []
+
+        words = []
+        cur_word = None
+        cur_page = 0
+        page_start = False
+        
+        cur_no = 0
+        cur_page_no = 0
+        for line_no,line in enumerate(self.lines):
+            if not line.strip():
+                continue
+            if match := re.match('〈(\d+)〉',line):
+                cur_page = int(match.group(1))
+                page_start = True
+                cur_page_no = 0
+                
+            elif page_start and re.fullmatch(r'(?i)^\*?[a-zàâçéèêëîïöôûùüÿñæœ \.\-\']+',line):
+                pass
+            elif re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
+                not page_start:
+                cur_no += 1
+                cur_page_no += 1
+                word = {'text': line, 'page': cur_page, 'line':line_no, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
+                cur_word = word
+                self.records.append(word)
+                page_start = False
+            elif '→' in line:
+                cur_no += 1
+                cur_page_no += 1
+                word = {'text': line, 'page': cur_page, 'line':line_no, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
+                cur_word = word
+                self.records.append(word)
+                page_start = False
+            else:
+                cur_word['text'] += '\n' + line
+                if isinstance(cur_word['page'],int):
+                    cur_word['page'] = [cur_word['page']]
+                    cur_word['line'] = [cur_word['line']]
+                if not cur_page in cur_word['page']:
+                    cur_word['page'].append(cur_page)
+                cur_word['line'].append(line_no)
+                page_start = False
+
+
+    def save(self,path = None):
+        if not self.dirty:
+            return
+        for rec in self.records:
+            if isinstance(rec['line'],list):
+                for line_no,text in zip(rec['line'],rec['text'].splitlines()):
+                    self.lines[line_no] = rec['text']
+            else:
+                self.lines[rec['line']] = rec['text']
+        final_text = self.prefix + '\n'.join(self.lines)
+        Path(self.path).write_text(final_text, encoding='utf-8')
+        self.dirty = False
+
+store_extension_map = {
+    '.json': JsonStore,
+    '.xlsx': XlsxStore,
+    '.docx': DocxStore,
+    '.pdf': PdfStore,
+    '.txt': TxtStore,
+}
+
+store_type_map = {
+    'larousse': LarousseTxtStore,
+}
 
 def create_store(path_or_cfg, key_name: str) -> BaseStore:
     if isinstance(path_or_cfg, str):
@@ -343,16 +463,11 @@ def create_store(path_or_cfg, key_name: str) -> BaseStore:
     else:
         path = path_or_cfg['path']
     ext = Path(path).suffix.lower()
-    if ext == '.json':
-        return JsonStore(path_or_cfg, key_name)
-    elif ext == '.xlsx':
-        return XlsxStore(path_or_cfg, key_name)
-    elif ext == '.docx':
-        return DocxStore(path_or_cfg, key_name)
-    elif ext == '.pdf':
-        return PdfStore(path_or_cfg, key_name)
-    elif ext == '.txt':
-        return TxtStore(path_or_cfg, key_name)
+    type = path_or_cfg.get('type') if isinstance(path_or_cfg, dict) else None
+    if type in store_type_map:
+        return store_type_map[type](path_or_cfg, key_name)
+    elif ext in store_extension_map:
+        return store_extension_map[ext](path_or_cfg, key_name)
     else:
         raise ValueError(f'不支持的文件类型: {ext}')
 
@@ -477,6 +592,8 @@ def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, in
     sm = SequenceMatcher(a=a, b=b, autojunk=False)
     ops = sm.get_opcodes()
     filtered_ops = []
+    if ignore_pattern is None:
+        return ops
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         a_chunk = sm.a[i1:i2]
         b_chunk = sm.b[j1:j2]
@@ -538,7 +655,7 @@ field_diff_containers: Dict[Tuple[int,str], ui.element] = {}
 # =============================
 
 def save_now(_: object = None) -> None:
-    store.save()
+    store.save(OUTPUT_PATH)
     if store.dirty is False:
         ui.notify('已保存 ✔')
 
@@ -774,7 +891,7 @@ def merge_image(pdf, positions, direction="vertical", scale = False):
 
 @app.get('/get_word_image')
 def get_word_image(index: int, field: str = ''):
-    if not pdf_doc:
+    if not image_source and not pdf_doc:
         return Response(status_code=404)
     if index < 0 or index >= len(store.records):
         return Response(status_code=404)
