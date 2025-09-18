@@ -517,8 +517,8 @@ brackets = {
     '(': ')', '[': ']', '{': '}',
     '（': '）', '【': '】', '｛': '｝',
     '《': '》', '「': '」', '『': '』',
-    '〔': '〕', '〖': '〗',
-    '⟪': '⟫'
+    '〔': '〕', '〖': '〗', '〈': '〉',
+    '⟪': '⟫', '<"': '>'
 }
 reverse_brackets = {value:key for key,value in brackets.items()}
 def check_brackets(s: str):
@@ -553,10 +553,28 @@ def gen_bracket_fix_candidate(text):
     if not result:
         return text
     chars = list(text)
+    fixes = []
     for t,lpos,lchar,rpos,rchar in result:
         if t == 'nomatch':
-            chars[rpos] = brackets[lchar]
-            chars[lpos] = reverse_brackets[rchar]
+            fixes.append((lpos,lchar,reverse_brackets[rchar]))
+            fixes.append((rpos,rpos,brackets[lchar]))
+        elif t == 'noleft':
+            fixes.append((rpos,rchar,''))
+            match = re.search(r'(?r)\b.',text,endpos=rpos-1)
+            if match:
+                fixes.append((match.start(),'',lchar))
+        elif t == 'noright':
+            fixes.append((lpos,lchar,''))
+            match = re.search(r'.\b',text,pos=lpos+1)
+            if match:
+                fixes.append((match.end(),'',rchar))
+    for pos, old, new in sorted(fixes,reverse=True):
+        if old == '':
+            chars.insert(pos,new)
+        elif new == '':
+            del chars[pos]
+        else:
+            chars[pos] = new
     return ''.join(chars)
 
 
