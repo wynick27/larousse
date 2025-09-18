@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Tuple
-import re
+
 from abc import ABC, abstractmethod
 from nicegui import ui, app
 from fastapi.responses import Response
@@ -21,6 +21,8 @@ from difflib import SequenceMatcher
 from PIL import Image, ImageOps
 import fitz
 import io
+#import re
+import regex as re
 
 # =============================
 # Global Config State
