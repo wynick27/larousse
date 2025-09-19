@@ -518,7 +518,7 @@ brackets = {
     '（': '）', '【': '】', '｛': '｝',
     '《': '》', '「': '」', '『': '』',
     '〔': '〕', '〖': '〗', '〈': '〉',
-    '⟪': '⟫', '<"': '>'
+    '⟪': '⟫', '<"': '>', '«':'»'
 }
 reverse_brackets = {value:key for key,value in brackets.items()}
 def check_brackets(s: str):
