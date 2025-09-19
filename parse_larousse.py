@@ -46,6 +46,7 @@ def parse_entries(path:str):
     lines = text.splitlines()
     cur_no = 0
     cur_page_no = 0
+    unmatched=0
     for line in lines:
         if not line.strip():
             continue
@@ -56,8 +57,9 @@ def parse_entries(path:str):
             
         elif page_start and re.fullmatch(r'(?i)^\*?[a-zàâçéèêëîïöôûùüÿñæœ \.\-\']+',line):
             pass
-        elif re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
-            not page_start and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
+        #elif #re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
+            #not page_start and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
+        elif re.match(r'(?i)^(\d+\.\s*)?\*? *([a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})( *ou *[a-zàâçéèêëîïôöûùüÿñæœ\-\']+ *(, *[a-zéèêëîïôöûùü]+ *){,2})?\[',line):
             cur_no += 1
             cur_page_no += 1
             word = {'text': line, 'page': cur_page, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
@@ -75,6 +77,7 @@ def parse_entries(path:str):
             if not page_start:
                 print(cur_page)
                 print(line)
+                unmatched += 1
             cur_word['text'] += ' ' + line
             if isinstance(cur_word['page'],int):
                 cur_word['page'] = [cur_word['page']]
@@ -82,7 +85,7 @@ def parse_entries(path:str):
                 cur_word['page'].append(cur_page)
             page_start = False
             
-
+    print("unmatched",unmatched)
     return words
 
 def match_image_pos(words):
@@ -212,12 +215,12 @@ def grammar_check():
         from lark import Lark, UnexpectedInput
         grammar_text = f.read()
         errors = []
-        larousse = Lark(grammar_text, parser='lalr')
+        larousse = Lark(grammar_text)
         for word in words:
             try:
 
                 parse_result = larousse.parse(word['text'])
-                print(parse_result.pretty())
+                #print(parse_result.pretty())
             except UnexpectedInput as e:
                 errors.append((word,e))
     return errors
