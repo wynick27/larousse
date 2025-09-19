@@ -34,7 +34,11 @@ def check_brackets(s: str):
 
 
 
-def parse_entries(text:str):
+def parse_entries(path:str):
+    with open(path,'r',encoding='utf8') as f:
+        text = f.read()
+    first_pos = text.find('〈1〉')
+    text = text[first_pos:]
     words = []
     cur_word = None
     cur_page = 0
@@ -198,19 +202,36 @@ def write_brackets_check_results():
         f.write(f'括号匹配错误数目：{unmatched}\n')
        
 
-with open('./拉鲁斯法汉双解词典 文本.txt','r',encoding='utf8') as f:
-    text = f.read()
-first_pos = text.find('〈1〉')
-text = text[first_pos:]
+def write_word_pos():
+    word_pos = combine_image_pos()
+    with open('image_pos.json','w',encoding='utf8') as f:
+        json.dump(word_pos,f, ensure_ascii=False, indent=2)
 
-words = parse_entries(text)
+def grammar_check():
+    with open('./data/larousse_grammar.txt','r',encoding='utf8') as f:
+        from lark import Lark, UnexpectedInput
+        grammar_text = f.read()
+        errors = []
+        larousse = Lark(grammar_text, parser='lalr')
+        for word in words:
+            try:
+
+                parse_result = larousse.parse(word['text'])
+                print(parse_result.pretty())
+            except UnexpectedInput as e:
+                errors.append((word,e))
+    return errors
+
+
+
+
+words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
+words_fr = parse_entries('./dictionnaire de la langue française.txt')
 
 word_by_page = split_page(words)
 
-word_pos = combine_image_pos()
+grammar_check()
 
-with open('image_pos.json','w',encoding='utf8') as f:
-    json.dump(word_pos,f, ensure_ascii=False, indent=2)
 #write_brackets_check_results()
 
 with open('拉鲁斯法汉双解词典_gemini.json','w',encoding='utf8') as f:
