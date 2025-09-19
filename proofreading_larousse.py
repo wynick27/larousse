@@ -730,7 +730,7 @@ current_index = 0
 
 ui.add_head_html("""
     <style>
-      .chunk { display:inline-block; margin: 0 1px; padding: 0 2px; border-radius: 4px; cursor: pointer; user-select: none; white-space: pre-wrap; }
+      .chunk { display:inline-block; margin: 0 1px; padding: 0 2px; border-radius: 4px; cursor: pointer;  white-space: pre-wrap; }
       .chunk.equal { background: transparent; color: inherit; cursor: default; }
       .chunk.insert { background-color: #d4f8d4; }
       .chunk.delete { background-color: #f8d4d4; text-decoration: line-through; }
