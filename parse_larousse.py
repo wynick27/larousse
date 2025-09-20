@@ -34,9 +34,11 @@ def check_brackets(s: str):
 
 
 
-def parse_entries(path:str):
+def parse_entries(path:str,errorlog=None):
     with open(path,'r',encoding='utf8') as f:
         text = f.read()
+
+    
     first_pos = text.find('〈1〉')
     text = text[first_pos:]
     words = []
@@ -55,21 +57,20 @@ def parse_entries(path:str):
             page_start = True
             cur_page_no = 0
             
-        elif page_start and re.fullmatch(r'(?i)^\*?[a-zàâçéèêëîïöôûùüÿñæœ \.\-\']+',line):
+        elif page_start and re.fullmatch(r'[A-Z]+',line):
             pass
         #elif #re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
             #not page_start and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
-        elif re.match(r'(?i)^(\d+\.\s*)?\*? *([a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})( *ou *[a-zàâçéèêëîïôöûùüÿñæœ\-\']+ *(, *[a-zéèêëîïôöûùü]+ *){,2})?\[',line):
+        elif re.match(r'^(\d+\.\s*)?\*? *(([a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(, *[a-zéèêëîïôöûùü]+ *){,2})( *(ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})?( \(de\) *)?\[[ptkbdgfvszʃʒlʀmnɲxŋieɛaɑɔouyœøəjɥwɑ̃ɛ̃ɔ̃œ̃]+|(\-?[A-Z]\. ?){2,5}(\[[ptkbdgfvszʃʒlʀmnɲxŋieɛaɑɔouyœøəjɥwɑ̃ɛ̃ɔ̃œ̃]+|(, )?sigle)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: ?(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}(, [a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: +(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}){,3} *→|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ\-\']+ ?\([a-zàâçéèêëîïôöûùüÿñæœ ]+?d[e\']\)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+\-, (préf\.|préfixe))',line)\
+            or not page_start:
             cur_no += 1
             cur_page_no += 1
             word = {'text': line, 'page': cur_page, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
-            cur_word = word
-            words.append(word)
-            page_start = False
-        elif '→' in line:
-            cur_no += 1
-            cur_page_no += 1
-            word = {'text': line, 'page': cur_page, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
+            headword= re.match(r'(?i)^((\d+\.\s*)?\*? *([a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,4}|(?:\-?[A-Z]\. ?){2,5}|b\.a\.\-ba))(?=,| *sigle| *\(| *\[| [a-zàâçéèêëîïôöûùüÿñæœ]+\.| ou| →)',line)
+            if headword:
+                word['headword'] = headword.group(1).strip()
+            else:
+                print(f"警告：无法解析词头: {line} (page {cur_page})")
             cur_word = word
             words.append(word)
             page_start = False
@@ -78,6 +79,8 @@ def parse_entries(path:str):
                 print(cur_page)
                 print(line)
                 unmatched += 1
+            elif errorlog:
+                errorlog.write(f"{cur_page}\n{line}\n")
             cur_word['text'] += ' ' + line
             if isinstance(cur_word['page'],int):
                 cur_word['page'] = [cur_word['page']]
@@ -227,12 +230,28 @@ def grammar_check():
 
 
 
-
+#with open('temp.txt','w',encoding='utf8') as f:
 words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
 words_fr = parse_entries('./dictionnaire de la langue française.txt')
+wordset_zh = {w['headword']:w for w in words if 'headword' in w}
+wordset_fr = {w['headword']:w for w in words_fr if 'headword' in w}
+wordset_zh_extra = wordset_zh.keys() - wordset_fr.keys()
+wordset_fr_extra = wordset_fr.keys() - wordset_zh.keys()
+with open('wordset_zh.txt','w',encoding='utf8') as f:
+    for headword,word in wordset_zh.items():
+        if headword in wordset_zh_extra:
+            f.write(f"{headword}\t{word['page']}\n")
+            f.write(f"{word['text']}\n")
+with open('wordset_fr.txt','w',encoding='utf8') as f:
+    for headword,word in wordset_fr.items():
+        if headword in wordset_fr_extra:
+            f.write(f"{headword}\t{word['page']}\n")
+            f.write(f"{word['text']}\n")
+print("中文多余词头",wordset_zh_extra)
+print("法文多余词头",wordset_fr_extra)
 
 word_by_page = split_page(words)
-
+match_image_pos(word_by_page)
 grammar_check()
 
 #write_brackets_check_results()

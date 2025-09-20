@@ -585,7 +585,11 @@ def make_filter(f_cfg):
     if ftype == "regex":
         field = f_cfg["field"]
         pattern = re.compile(f_cfg["pattern"])
-        return lambda r: bool(pattern.search(str(r.get(field, ""))))
+        inverse = f_cfg.get("inverse", False)
+        if inverse:
+            return lambda r: not bool(pattern.search(str(r.get(field, ""))))
+        else:
+            return lambda r: bool(pattern.search(str(r.get(field, ""))))
     elif ftype == "paren_match":
         field = f_cfg["field"]
         return lambda r: bool(check_brackets(str(r.get(field, ""))))
@@ -625,6 +629,8 @@ def make_filter_candidate(f_cfg):
         replace = f_cfg.get('replace')
         if replace:
             pattern = re.compile(f_cfg["pattern"])
+        else:
+            return None
         return lambda r: pattern.sub(replace,str(r.get(field, "")))
     elif ftype == "paren_match":
         field = f_cfg["field"]
