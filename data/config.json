@@ -10,9 +10,9 @@
   },
   
   "candidates": {
+	  "french": {"path": "./data/french.json", "keyname":"headword"},
 	  "textin": "./data/textin.json",
-	  "quark": "./data/quark.json",
-	  "french": {"path": "./data/french.json", "keyname":"headword", "ignore_pattern": {"text":"(?i)[^a-zàâçéèêëîïôöûùüÿñæœ']"}}
+	  "quark": "./data/quark.json"
   },
   "filters":[
   {
@@ -24,11 +24,12 @@
 	  "type": "candidate_match",
 	  "field": "text",
 	  "source": "french",
-	  "title": "词头匹配"
+	  "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆◇]",
+	  "title": "法文候选匹配"
   }
   ],
   "items_per_page": 1,
   "field_config": {
-    "text": {"label": "释义", "mode": "normal"}
+    "text": {"label": "释义", "mode": "normal", "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆◇]"}
   }
 }

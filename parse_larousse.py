@@ -268,9 +268,15 @@ def gen_diff_list(words,words_fr):
 words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
 words_fr = parse_entries('./dictionnaire de la langue française.txt')
 #gen_diff_list(words,words_fr)
-
+def change_num(match):
+    circled_num = "❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
+    num = int(match.group(1))
+    if num > 50:
+        return match.group(0)
+    return circled_num[num-1]
 for word in words_fr:
-    word['text'] = re.sub(r'\s+',' ',word['text']).strip()
+    word['text'] = re.sub(r'\-\s*(\d+)\.',change_num,word['text'])
+    word['text'] = word['text'].replace("□","◇")
 word_by_page = split_page(words)
 word_by_page_fr = split_page(words_fr)
 #match_image_pos(word_by_page)
@@ -281,3 +287,5 @@ word_by_page_fr = split_page(words_fr)
 with open('拉鲁斯法汉双解词典.json','w',encoding='utf8') as f:
     json.dump(words,f, ensure_ascii=False, indent=2)
 
+with open('french.json','w',encoding='utf8') as f:
+    json.dump(words_fr,f, ensure_ascii=False, indent=2)

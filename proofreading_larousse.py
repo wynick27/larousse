@@ -116,7 +116,9 @@ def safe_read_json(path):
         return json.load(f)
 
 
-def safe_write_json(path: Path, data: List[dict]) -> None:
+def safe_write_json(path: Path | str, data: List[dict]) -> None:
+    if isinstance(path, str):
+        path = Path(path)
     tmp = path.with_suffix('.tmp')
     with tmp.open('w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -206,7 +208,10 @@ class BaseStore(ABC):
         else:
             self.path = path_or_cfg['path']
             self.cfg = path_or_cfg
-        self.key_name = key_name
+        if 'keyname' in self.cfg:
+            self.key_name = path_or_cfg['keyname']
+        else:
+            self.key_name = key_name
         self.records = []
         self.dirty = False
 
@@ -233,19 +238,21 @@ class JsonStore(BaseStore):
         self.data = safe_read_json(self.path)
         if isinstance(self.data,list):
             self.records = self.data
+            self.data_map = {rec[self.key_name]: rec for rec in self.data if self.key_name in rec}
         elif isinstance(self.data,dict):
             for value in self.data.values():
                 self.records.append(value)
+            self.data_map = self.data
 
     def save(self,path = None):
         if self.dirty:
-            safe_write_json(self.path, self.data)
+            safe_write_json(path, self.data)
             self.dirty = False
 
     def get(self, key_value):
-        if isinstance(self.data,dict):
-            return self.data.get(key_value)
-        return BaseStore.get(self,key_value)
+        if key_value in self.data_map:
+            return self.data_map[key_value]
+        return None
 
 class XlsxStore(BaseStore):
     def load(self):
@@ -599,17 +606,27 @@ def make_filter(f_cfg):
     elif ftype == "candidate_match":
         # 检查候选来源是否完全一致
         source = f_cfg.get("source")  # 可选，指定候选来源
+        ignore_pattern = f_cfg.get("ignore_pattern")
+        ignore_re = re.compile(ignore_pattern) if ignore_pattern else None
         def _f(r):
             for field in FIELDS:
-                cands = get_candidate(r[KEYNAME], field)
+                cands = get_candidate(r, field)
                 if cands:
                     base = r.get(field, "")
-                    if source:
-                        if source in cands and base != cands[source]:
+                    if ignore_re:
+                        base = ignore_re.sub("",base)
+                    
+                    if source and source in cands:
+                        target = cands[source]
+                        if ignore_pattern:
+                            target = ignore_re.sub("",target)
+                        if base != target:
                             return True
                     else:
-                        for v in cands.values():
-                            if base != v:
+                        for target in cands.values():
+                            if ignore_pattern:
+                                target = ignore_re.sub("",target)
+                            if base != target:
                                 return True
             return False
         return _f
@@ -619,7 +636,7 @@ def make_filter(f_cfg):
             from difflib import SequenceMatcher
             result = []
             for field in FIELDS:
-                cands = get_candidate(r[KEYNAME], field)
+                cands = get_candidate(r, field)
                 if cands:
                     base = r.get(field, "")
                     for v in cands.values():
@@ -688,11 +705,17 @@ def update_record_status():
 # Candidate Provider
 # =============================
 
-def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
+def get_candidate(rec: any, field_name: str) -> Dict[str, str]:
     result = {}
     if filter_candidate:
-         result["过滤器"] = filter_candidate(store.get(rec_key))
+         result["过滤器"] = filter_candidate(rec)
     for name, candidate in candidates.items():
+        rec_keyname = candidate.cfg.get('keyname')
+        if rec_keyname and rec_keyname in rec:
+            rec_key = rec[rec_keyname]
+        else:
+            rec_key = rec.get(KEYNAME)
+
         record = candidate.get(rec_key)
         if record and field_name in record:
             result[name] = record[field_name]
@@ -701,22 +724,57 @@ def get_candidate(rec_key: any, field_name: str) -> Dict[str, str]:
 # =============================
 # Diff Engine (character-level, no tokenization)
 # =============================
-
+def merge_equal_opcodes(opcodes):
+    """
+    合并连续的 equal，避免碎片化
+    """
+    merged = []
+    for tag, i1, i2, j1, j2 in opcodes:
+        if merged and merged[-1][0] == "equal" and tag == "equal":
+            # 合并到上一个 equal
+            last = merged.pop()
+            merged.append((
+                "equal",
+                last[1], i2,  # 合并 i1->i2
+                last[3], j2   # 合并 j1->j2
+            ))
+        else:
+            merged.append((tag, i1, i2, j1, j2))
+    return merged
 def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, int, int, int, int]]:
     sm = SequenceMatcher(a=a, b=b, autojunk=False)
     ops = sm.get_opcodes()
-    filtered_ops = []
+    
     if ignore_pattern is None:
         return ops
+    new_opcodes = []
+    ignore_re = re.compile(ignore_pattern)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
-        a_chunk = sm.a[i1:i2]
-        b_chunk = sm.b[j1:j2]
-        # 如果差异完全由 ignore_re 匹配的字符组成，直接当作 equal
-        if tag != "equal" and re.sub(ignore_pattern,"",a_chunk) == re.sub(ignore_pattern,"",b_chunk):
-            filtered_ops.append(("equal", i1, i2, j1, j2))
-        else:
-            filtered_ops.append((tag, i1, i2, j1, j2))
-    return filtered_ops
+        ai, aj = i1, j1
+        while ai < i2 or aj < j2:
+            ch_a = a[ai] if ai < i2 else None
+            ch_b = b[aj] if aj < j2 else None
+
+            if ch_a and ignore_re.match(ch_a):
+                # 遇到忽略字符 => 当作 equal
+                new_opcodes.append(("equal", ai, ai+1, aj, aj+(1 if ch_b else 0)))
+                ai += 1
+                if ch_b: aj += 1
+                continue
+
+            if ch_b and ignore_re.match(ch_b):
+                # b 中单独有忽略字符 => 当作 equal
+                new_opcodes.append(("equal", ai, ai, aj, aj+1))
+                aj += 1
+                continue
+
+            # 其他情况走原 tag
+            next_ai = ai + 1 if ai < i2 else ai
+            next_aj = aj + 1 if aj < j2 else aj
+            new_opcodes.append((tag, ai, next_ai, aj, next_aj))
+            ai, aj = next_ai, next_aj
+
+    return merge_equal_opcodes(new_opcodes)
 
 
 def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', ignore_pattern=None) -> str:
@@ -828,7 +886,7 @@ def _render_diff_chunks(index:int, field_name: str, original: str, cand_text: st
     with ui.row().classes('wrap items-start gap-1 ' + ('mono text-sm' if size == 'compact' else 'mono')):
         for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
             if tag == 'equal':
-                _emit_text_with_breaks(original[i1:i2], 'chunk equal', None, show_newline_glyph=False)
+                _emit_text_with_breaks(cand_text[j1:j2], 'chunk equal', None, show_newline_glyph=False)
             elif tag == 'delete':
                 _emit_text_with_breaks(original[i1:i2] or '', 'chunk delete',
                                     on_click=lambda e, idx=idx: apply_chunk(index, field_name, cand_text, idx, 'delete'),
@@ -864,8 +922,8 @@ def render_diffs_for_field(index:int, field_name: str) -> None:
         field_diff_containers[(index,field_name)] = ui.column().classes('w-full')
     field_container = field_diff_containers[(index,field_name)]
     field_container.clear()
-    rec_no = store.records[index][KEYNAME]
-    candidates_dict = get_candidate(rec_no, field_name)
+    rec = store.records[index]
+    candidates_dict = get_candidate(rec, field_name)
     if not candidates_dict:
         with field_container:
             ui.label('无候选数据').classes('muted')
@@ -886,10 +944,9 @@ def render_compact_fields(container: ui.element):
             break
         real_idx = get_visible_index(current_index+offset)
         rec = store.records[real_idx]
-        rec_no = rec[KEYNAME]
         sources: Dict[str, Dict[str, str]] = {}
         for f in compact_fields:
-            for src, text in get_candidate(rec_no, f).items():
+            for src, text in get_candidate(rec, f).items():
                 sources.setdefault(src, {})[f] = text
 
         with container:
