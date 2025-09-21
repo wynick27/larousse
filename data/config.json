@@ -1,6 +1,6 @@
 {
-  "input_file": {"path":"./拉鲁斯法汉双解词典 文本.txt","type":"larousse"},
-  "output_file": "./data/拉鲁斯法汉双解词典 文本.txt",
+  "input_file": {"path":"./拉鲁斯法汉双解词典.json","type":"json"},
+  "output_file": "./data/拉鲁斯法汉双解词典.json",
   "key_name": "id",
   "image_source":{
 	  "type":"pdf",
@@ -12,8 +12,7 @@
   "candidates": {
 	  "textin": "./data/textin.json",
 	  "quark": "./data/quark.json",
-	  "french": "./data/french.json",
-	  "word_diff_list": "./data/word_diff_list_fr.json"
+	  "french": {"path": "./data/french.json", "keyname":"headword", "ignore_pattern": {"text":"(?i)[^a-zàâçéèêëîïôöûùüÿñæœ']"}}
   },
   "filters":[
   {
@@ -24,15 +23,8 @@
   {
 	  "type": "candidate_match",
 	  "field": "text",
-	  "source": "word_diff_list",
+	  "source": "french",
 	  "title": "词头匹配"
-  },
-    {
-	  "type": "regex",
-	  "field": "text",
-    "pattern": "〔([乐纸纹纺组细经代会统信修光公绣军农冶几缝刻剑剧美化医印肉胚舞艺药菌蜂西视哲解园计土诉诗财基声外逻遗宗采铁银锁币年防影御雕技报拳控摄放政飞数文无昆马鸟木机林树核植气汽油法洞渔烹物犬猎病登矿社科空]|生[态理化]?+|兽医|书装|人口?+|精分?+|饰艺|体人?+|刑法|动生?+|古[生字希法海罗诗钱]?+|葡萄|史前?+|商法?+|地[形物貌质]?+|天主?+|宇航|宪法|家禽|封法?+|工艺?+|建筑?+|心病?+|星相|有化|行管|武器|电[信子]?+|牌戏|证券|民法|海[法洋]?+|语[言音]?+|玻璃|赛马|神[学经]?+|考古|金银|水地?+|税法)(?=[^,〕])",
-    "replace": "〔\\1〕",
-	  "title": "专有名词匹配"
   }
   ],
   "items_per_page": 1,

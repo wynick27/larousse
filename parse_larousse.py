@@ -267,14 +267,17 @@ def gen_diff_list(words,words_fr):
 #with open('temp.txt','w',encoding='utf8') as f:
 words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
 words_fr = parse_entries('./dictionnaire de la langue française.txt')
-gen_diff_list(words,words_fr)
+#gen_diff_list(words,words_fr)
+
+for word in words_fr:
+    word['text'] = re.sub(r'\s+',' ',word['text']).strip()
 word_by_page = split_page(words)
 word_by_page_fr = split_page(words_fr)
-match_image_pos(word_by_page)
-grammar_check()
+#match_image_pos(word_by_page)
+#grammar_check()
 
 #write_brackets_check_results()
 
-with open('拉鲁斯法汉双解词典_gemini.json','w',encoding='utf8') as f:
+with open('拉鲁斯法汉双解词典.json','w',encoding='utf8') as f:
     json.dump(words,f, ensure_ascii=False, indent=2)
 
