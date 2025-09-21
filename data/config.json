@@ -24,7 +24,7 @@
   {
 	  "type": "candidate_match",
 	  "field": "text",
-	  "source": "wordlist_fr",
+	  "source": "word_diff_list",
 	  "title": "词头匹配"
   },
     {
