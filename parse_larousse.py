@@ -61,7 +61,7 @@ def parse_entries(path:str,errorlog=None):
             pass
         #elif #re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
             #not page_start and re.match(r'^(\d+\.\s*)[a-zàâçéèêëîïôöûùüÿñæœ]+|^[a-zàâçéèêëîïôöûùüÿñæœ]+ (adj\.|n\.)|^([A-Z]\.[ ,]){2,}',line):
-        elif re.match(r'^(\d+\.\s*)?\*? *(([a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(, *[a-zéèêëîïôöûùü]+ *){,2})( *(ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})?( \(de\) *)?\[[ptkbdgfvszʃʒlʀmnɲxŋieɛaɑɔouyœøəjɥwɑ̃ɛ̃ɔ̃œ̃]+|(\-?[A-Z]\. ?){2,5}(\[[ptkbdgfvszʃʒlʀmnɲxŋieɛaɑɔouyœøəjɥwɑ̃ɛ̃ɔ̃œ̃]+|(, )?sigle)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: ?(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}(, [a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: +(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}){,3} *→|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ\-\']+ ?\([a-zàâçéèêëîïôöûùüÿñæœ ]+?d[e\']\)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+\-, (préf\.|préfixe))',line)\
+        elif re.match(r'(?i)^(\d+\.\s*)?\*? *(([A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(, *[a-zéèêëîïôöûùü]+ *){,2})( *(ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})?( \(de\) *)?\[[^\u4e00-\u9fff]+|(\-?[A-Z]\. ?){2,5}(\[[^\u4e00-\u9fff]+|(, )?sigle)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: ?(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}(, [a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: *(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}){,3} *→|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ\-\']+ ?\([a-zàâçéèêëîïôöûùüÿñæœ ]+?d[e\']\)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+\-, (préf\.|préfixe)|T\. G\. V\.)',line)\
             or not page_start:
             cur_no += 1
             cur_page_no += 1
@@ -233,24 +233,42 @@ def grammar_check():
 #with open('temp.txt','w',encoding='utf8') as f:
 words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
 words_fr = parse_entries('./dictionnaire de la langue française.txt')
-wordset_zh = {w['headword']:w for w in words if 'headword' in w}
-wordset_fr = {w['headword']:w for w in words_fr if 'headword' in w}
+wordset_zh = {}
+for w in words:
+    if w['headword'] in wordset_zh:
+        print(f"警告：重复词头 {w['headword']} (page {wordset_zh[w['headword']]['page']} {w['page']})")
+    wordset_zh[w['headword']] = w
+wordset_fr = {}
+for w in words_fr:
+    if w['headword'] in wordset_fr:
+        print(f"警告：重复词头 {w['headword']} (page  {wordset_fr[w['headword']]['page']} {w['page']})")
+    wordset_fr[w['headword']] = w
 wordset_zh_extra = wordset_zh.keys() - wordset_fr.keys()
 wordset_fr_extra = wordset_fr.keys() - wordset_zh.keys()
+word_list_zh = []
+word_list_fr = []
 with open('wordset_zh.txt','w',encoding='utf8') as f:
     for headword,word in wordset_zh.items():
         if headword in wordset_zh_extra:
             f.write(f"{headword}\t{word['page']}\n")
             f.write(f"{word['text']}\n")
+            if headword not in ['1. bille','1. blanc']:
+                word_list_zh.append(word)
 with open('wordset_fr.txt','w',encoding='utf8') as f:
     for headword,word in wordset_fr.items():
         if headword in wordset_fr_extra:
             f.write(f"{headword}\t{word['page']}\n")
             f.write(f"{word['text']}\n")
-print("中文多余词头",wordset_zh_extra)
-print("法文多余词头",wordset_fr_extra)
+            if headword not in ['vacillement','vaciller','vacuité','vacuole']:
+                word_list_fr.append(word)
 
+wordmap_fr = {}
+for zh,fr in zip(word_list_zh,word_list_fr):
+    wordmap_fr[zh['id']] = fr
+with open('wordlist_fr.json','w',encoding='utf8') as f:
+    json.dump(wordmap_fr,f, ensure_ascii=False, indent=2)
 word_by_page = split_page(words)
+word_by_page_fr = split_page(words_fr)
 match_image_pos(word_by_page)
 grammar_check()
 

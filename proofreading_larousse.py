@@ -446,21 +446,17 @@ class LarousseTxtStore(BaseStore):
                 cur_page = int(match.group(1))
                 page_start = True
                 cur_page_no = 0
-                
-            elif page_start and re.fullmatch(r'(?i)^\*?[a-zàâçéèêëîïöôûùüÿñæœ \.\-\']+',line):
+
+            elif page_start and re.fullmatch(r'[A-Z]+',line):
                 pass
-            elif re.match(r'(?i)^(\d+\.\s*)?\*?[a-zàâçéèêëîïôöûùüÿñæœ \.,\-\']+(\(.{2,10}\)\s*)?\[|^[a-zàâçéèêëîïôöûùüÿñæœ\-]+,?\s*(préfixe|préf.)|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ]+\s*\([a-zàâçéèêëîïôöûùüÿñæœ ]+\)',line) or\
-                not page_start:
+            elif re.match(r'(?i)^(\d+\.\s*)?\*? *(([A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(, *[a-zéèêëîïôöûùü]+ *){,2})( *(ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+( [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(, *[a-zéèêëîïôöûùü]+ *){,2})?( \(de\) *)?\[[^\u4e00-\u9fff]+|(\-?[A-Z]\. ?){2,5}(\[[^\u4e00-\u9fff]+|(, )?sigle)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: ?(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}(, [a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: *(n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|pron|poss|indéf|relat|et interr|dém|déf|interj|art|impers)\.){,4}){,3} *→|[A-Z][a-zàâçéèêëîïôöûùüÿñæœ\-\']+ ?\([a-zàâçéèêëîïôöûùüÿñæœ ]+?d[e\']\)|[a-zàâçéèêëîïôöûùüÿñæœ\-\']+\-, (préf\.|préfixe)|T\. G\. V\.)',line)\
+                or not page_start:
                 cur_no += 1
                 cur_page_no += 1
                 word = {'text': line, 'page': cur_page, 'line':line_no, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
-                cur_word = word
-                self.records.append(word)
-                page_start = False
-            elif '→' in line:
-                cur_no += 1
-                cur_page_no += 1
-                word = {'text': line, 'page': cur_page, 'line':line_no, 'no': cur_no, 'id':f"{cur_page}.{cur_page_no}"}
+                headword= re.match(r'(?i)^((\d+\.\s*)?\*? *([a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,4}|(?:\-?[A-Z]\. ?){2,5}|b\.a\.\-ba))(?=,| *sigle| *\(| *\[| [a-zàâçéèêëîïôöûùüÿñæœ]+\.| ou| →)',line)
+                if headword:
+                    word['headword'] = headword.group(1).strip()
                 cur_word = word
                 self.records.append(word)
                 page_start = False
@@ -600,6 +596,23 @@ def make_filter(f_cfg):
         if not callable(func):
             raise ValueError("lambda filter must be callable")
         return func
+    elif ftype == "candidate_match":
+        # 检查候选来源是否完全一致
+        source = f_cfg.get("source")  # 可选，指定候选来源
+        def _f(r):
+            for field in FIELDS:
+                cands = get_candidate(r[KEYNAME], field)
+                if cands:
+                    base = r.get(field, "")
+                    if source:
+                        if source in cands and base != cands[source]:
+                            return True
+                    else:
+                        for v in cands.values():
+                            if base != v:
+                                return True
+            return False
+        return _f
     elif ftype == "candidate_half_mismatch":
         # 特殊：检查候选来源是否至少一半不一致
         def _f(r):
