@@ -724,57 +724,40 @@ def get_candidate(rec: any, field_name: str) -> Dict[str, str]:
 # =============================
 # Diff Engine (character-level, no tokenization)
 # =============================
-def merge_equal_opcodes(opcodes):
-    """
-    合并连续的 equal，避免碎片化
-    """
-    merged = []
-    for tag, i1, i2, j1, j2 in opcodes:
-        if merged and merged[-1][0] == "equal" and tag == "equal":
-            # 合并到上一个 equal
-            last = merged.pop()
-            merged.append((
-                "equal",
-                last[1], i2,  # 合并 i1->i2
-                last[3], j2   # 合并 j1->j2
-            ))
-        else:
-            merged.append((tag, i1, i2, j1, j2))
-    return merged
+
 def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, int, int, int, int]]:
     sm = SequenceMatcher(a=a, b=b, autojunk=False)
     ops = sm.get_opcodes()
     
     if ignore_pattern is None:
         return ops
-    new_opcodes = []
+    new_ops = []
     ignore_re = re.compile(ignore_pattern)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         ai, aj = i1, j1
         while ai < i2 or aj < j2:
-            ch_a = a[ai] if ai < i2 else None
-            ch_b = b[aj] if aj < j2 else None
-
-            if ch_a and ignore_re.match(ch_a):
-                # 遇到忽略字符 => 当作 equal
-                new_opcodes.append(("equal", ai, ai+1, aj, aj+(1 if ch_b else 0)))
+            # -------- 1) 先吃掉两侧的忽略字符，标记为 equal
+            start_ai, start_aj = ai, aj
+            while ai < i2 and ignore_re.match(a[ai]):
                 ai += 1
-                if ch_b: aj += 1
-                continue
-
-            if ch_b and ignore_re.match(ch_b):
-                # b 中单独有忽略字符 => 当作 equal
-                new_opcodes.append(("equal", ai, ai, aj, aj+1))
+            while aj < j2 and ignore_re.match(b[aj]):
                 aj += 1
-                continue
+            if ai > start_ai or aj > start_aj:
+                new_ops.append(("equal", start_ai, ai, start_aj, aj))
+                continue  # 继续下一轮（可能还剩不忽略的字符）
 
-            # 其他情况走原 tag
-            next_ai = ai + 1 if ai < i2 else ai
-            next_aj = aj + 1 if aj < j2 else aj
-            new_opcodes.append((tag, ai, next_ai, aj, next_aj))
-            ai, aj = next_ai, next_aj
-
-    return merge_equal_opcodes(new_opcodes)
+            # -------- 2) 处理剩下的不忽略字符
+            if ai < i2 and aj < j2:
+                new_ops.append((tag, ai, ai+1, aj, aj+1))
+                ai += 1
+                aj += 1
+            elif ai < i2:
+                new_ops.append(("delete", ai, ai+1, aj, aj))
+                ai += 1
+            elif aj < j2:
+                new_ops.append(("insert", ai, ai, aj, aj+1))
+                aj += 1
+    return new_ops
 
 
 def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', ignore_pattern=None) -> str:
