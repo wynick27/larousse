@@ -24,12 +24,12 @@
 	  "type": "candidate_match",
 	  "field": "text",
 	  "source": "french",
-	  "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆◇]",
+	  "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆]",
 	  "title": "法文候选匹配"
   }
   ],
   "items_per_page": 1,
   "field_config": {
-    "text": {"label": "释义", "mode": "normal", "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆◇]"}
+    "text": {"label": "释义", "mode": "normal", "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖◆]"}
   }
 }
