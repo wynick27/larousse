@@ -760,13 +760,13 @@ def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, in
     return new_ops
 
 
-def apply_single_chunk(a: str, b: str, opcode_index: int, action: str = 'auto', ignore_pattern=None) -> str:
+def apply_single_chunk(a: str, b: str, opcode_index: int = None, action: str = 'auto', ignore_pattern=None) -> str:
     ops = opcodes_for_diff(a,b,ignore_pattern)
     parts: List[str] = []
     for idx, (tag, i1, i2, j1, j2) in enumerate(ops):
         if tag == 'equal':
             parts.append(a[i1:i2])
-        elif idx == opcode_index:
+        elif not opcode_index or idx == opcode_index:
             if tag == 'insert':
                 if action in ('insert', 'replace', 'auto'):
                     parts.append(b[j1:j2])
@@ -895,6 +895,7 @@ def render_single_candidate(index:int, field_name: str, source: str, cand_text: 
             ui.label(f'候选来源: {source}').classes('text-primary')
             with ui.row().classes('gap-2'):
                 ui.button('应用全部变化', on_click=lambda: apply_all_from_candidate(index, field_name, cand_text)).props('dense flat')
+                ui.button('替换文本', on_click=lambda: replace_from_candidate(index, field_name, cand_text)).props('dense flat')
                 #ui.button('恢复为当前文本', on_click=lambda: refresh_record_view()).props('dense flat')
         _render_diff_chunks(index, field_name, original, cand_text, size='normal')
 
@@ -965,6 +966,16 @@ def apply_chunk(index:int, field_name: str, cand_text: str, opcode_index: int, a
 
 
 def apply_all_from_candidate(index:int, field_name: str, cand_text: str) -> None:
+    original = store.records[index][field_name]
+    new_value = apply_single_chunk(original, cand_text, None, 'auto', get_ignore_pattern(field_name))
+    store.set_field(index, field_name, new_value)
+    field_editors[(index,field_name)].value = new_value
+    if FIELD_MODES[field_name] == 'normal':
+        render_diffs_for_field(index, field_name)
+    else:
+        render_compact_fields(compact_container)
+
+def replace_from_candidate(index:int, field_name: str, cand_text: str) -> None:
     store.set_field(index, field_name, cand_text)
     field_editors[(index,field_name)].value = cand_text
     if FIELD_MODES[field_name] == 'normal':
