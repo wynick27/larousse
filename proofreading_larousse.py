@@ -322,11 +322,12 @@ class TxtStore(BaseStore):
         self.end_pat = re.compile(cfg.get('end', r'\Z'), re.M)
         self.split_pat = re.compile(cfg.get('split', r'\n'), re.M)
         self.page_pat =  re.compile(cfg.get('page'), re.M) if cfg.get('page') else None
-        self.type = cfg.get('type', 'simple')
+        self.is_grammar = cfg.get('is_grammar', False)
         self.fields_cfg = cfg.get('fields', {})
         self.grammar_path = cfg.get('grammar_path')
         self.parser = None
-        if self.type == 'grammar' and self.grammar_path:
+        self.modified_recs = set()
+        if self.is_grammar and self.grammar_path:
             grammar_text = Path(self.grammar_path).read_text(encoding='utf-8')
             self.parser = Lark(grammar_text, parser='lalr')
 
@@ -351,80 +352,109 @@ class TxtStore(BaseStore):
         last_pos = 0
         cur_page = 0
         cur_num = 0
+        if self.split_pat.pattern == '\n':
+            self.lines = core_text.splitlines()
+            for line_no,line in enumerate(self.lines):
+                if self.page_pat and (match := self.page_pat.match(line)):
+                    if cur_page != int(match.group(1)):
+                        cur_num = 0
+                    cur_page = int(match.group(1))
+                    continue
+                rec = {"no": cur_num+1, 'text': line, 'line': line_no}
+                if self.page_pat:
+                    rec['page'] = cur_page
+                self.records.append(rec)
+                cur_num += 1
+            return
+        else:
+            self.lines = []
+            self.separators = []
+            for i, match in enumerate(self.split_pat.finditer(core_text)):
+                segment = core_text[last_pos:match.start()]
+                separator = match.group(0)
+                self.lines.append(segment)
+                self.separators.append(separator)
 
-        for i, match in enumerate(self.split_pat.finditer(core_text)):
-            segment = core_text[last_pos:match.start()]
-            if self.page_pat and self.page_pat.match(segment):
-                match = self.page_pat.match(segment)
-                if cur_page != int(match.group(1)):
-                    cur_num = 0
-                cur_page = int(match.group(1))
-                continue
-            rec = {"no_page": cur_num+1, '_raw': segment, '_separator': match.group(0)}
-            self.records.append(rec)
-            if self.page_pat:
-                rec['page'] = cur_page
-            last_pos = match.end()
-            cur_num += 1
+                if self.page_pat and self.page_pat.match(segment):
+                    match = self.page_pat.match(segment)
+                    if cur_page != int(match.group(1)):
+                        cur_num = 0
+                    cur_page = int(match.group(1))
+                    continue
+                rec = {"no": cur_num+1, 'text': segment, "line_no": len(self.lines)-1}
+                self.records.append(rec)
+                if self.page_pat:
+                    rec['page'] = cur_page
+                last_pos = match.end()
+                cur_num += 1
 
-        # 最后一个片段
-        if last_pos < len(core_text):
-            rec = {"no_page": cur_num+1, '_raw': core_text[last_pos:], '_separator': ''}
-            if self.page_pat:
-                rec['page'] = cur_page
-            self.records.append(rec)
+            # 最后一个片段
+            if last_pos < len(core_text):
+                segment = core_text[last_pos:]
+                self.lines.append(segment)
+                self.separators.append("")
+                rec = {"no": cur_num+1, 'text': core_text[last_pos:], "line_no": len(self.lines)-1}
+                if self.page_pat:
+                    rec['page'] = cur_page
+                self.records.append(rec)
 
         for i, rec in enumerate(self.records):
-            seg = rec['_raw']
-            if self.type == 'grammar' and self.parser:
+            seg = rec['text']
+            if self.is_grammar:
                 
                 tree: Tree = self.parser.parse(seg)
                 rec['_tree'] = tree
                 for child in tree.children:
                     if isinstance(child, Tree):
                         rec[child.data] = seg[child.meta.start_pos:child.meta.end_pos]
-            elif self.type == 'simple':
+            else:
                 for fname, regex in self.fields_cfg.items():
                     for m in re.finditer(regex, seg, re.M):
                         rec.setdefault('_matches', {})[fname] = (m.start(), m.end(), m.group(0))
                         rec[fname] = m.group(1) if m.groups() else m.group(0)
-                rec['text'] = seg
-            self.records.append(rec)
+
 
     def set_field(self, index: int, field_name: str, value: str):
         rec = self.records[index]
-        if self.type == 'simple' and '_matches' in rec and field_name in rec['_matches']:
+        if not self.is_grammar and '_matches' in rec and field_name in rec['_matches']:
             start, end, old = rec['_matches'][field_name]
-            raw = rec['_raw']
-            rec['_raw'] = raw[:start] + value + raw[end:]
+            raw = rec['text']
+            rec['text'] = raw[:start] + value + raw[end:]
             rec['_matches'][field_name] = (start, start+len(value), value)
-        elif self.type == 'grammar' and '_tree' in rec:
+        elif self.is_grammar and '_tree' in rec:
             # 找到对应子树位置替换
             tree: Tree = rec['_tree']
-            new_text = list(rec['_raw'])
+            new_text = list(rec['text'])
             for child in tree.children:
                 if isinstance(child, Tree) and child.data == field_name:
                     s, e = child.meta.start_pos, child.meta.end_pos
                     new_text[s:e] = value
                     child.meta.start_pos, child.meta.end_pos = s, s+len(value)
-            rec['_raw'] = ''.join(new_text)
-        else:
-            rec['_raw'] = value
+            rec['text'] = ''.join(new_text)
         rec[field_name] = value
         self.dirty = True
+        self.modified_recs.add(index)
 
     def save(self,path = None):
         if not self.dirty:
             return
-        rebuilt_segments = [rec['_raw'] for rec in self.records]
-        out = []
-        for i, seg in enumerate(rebuilt_segments):
-            out.append(seg)
-            if i < len(self.separators):
-                out.append(self.separators[i])
-        final_text = self.prefix + ''.join(out) + self.suffix
+        for idx in self.modified_recs:
+            rec = self.records[idx]
+            if isinstance(rec['line_no'],list):
+                for line_no,text in zip(rec['line_no'],rec['text'].splitlines()):
+                    self.lines[line_no] = text
+            else:
+                self.lines[rec['line_no']] = rec['text']
+        if self.split_pat.pattern == '\n':
+            out_text = '\n'.join(self.lines)
+        else:
+            out_text = ''
+            for line,sep in zip(self.lines,self.separators):
+                out_text += line + sep
+        final_text = self.prefix + ''.join(out_text) + self.suffix
         Path(path).write_text(final_text, encoding='utf-8')
         self.dirty = False
+        self.modified_recs = set()
 
 class LarousseTxtStore(BaseStore):
     def load(self):
