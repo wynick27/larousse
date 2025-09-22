@@ -1098,19 +1098,45 @@ def build_header():
                                     label="过滤器", value=0,on_change=on_filter_change)
             
             ui.html('<input type="file" id="fileInput" style="display:none" onchange="window.loadConfigFromFile(this)" />')
-            ui.button('⟵ 后退', on_click=lambda: set_current_index(current_index - ITEMS_PER_PAGE)).props('dense')
-            ui.button('前进 ⟶', on_click=lambda: set_current_index(current_index + ITEMS_PER_PAGE)).props('dense')
+            prev_btn = ui.button('⟵ 后退', on_click=lambda: set_current_index(current_index - ITEMS_PER_PAGE)).props('dense')
+            next_btn = ui.button('前进 ⟶', on_click=lambda: set_current_index(current_index + ITEMS_PER_PAGE)).props('dense')
             record_status_label = ui.label().classes('text-sm')
             if store.records:
-                idx_input = ui.input(f'跳转到 {KEYNAME}', value=store.records[current_index][KEYNAME])#, min=store.records[0][KEYNAME], max=store.records[-1][KEYNAME])
+                jump_field_select = ui.select(
+                    {f: f for f in ['_index',KEYNAME] + [k for k in CONFIG.get("jump_fields",[]) if k != KEYNAME]},
+                    value=KEYNAME,
+                    label="跳转字段"
+                ).props('dense').classes('w-28')
+
+                jump_value_input = ui.input(placeholder='输入值…').props('dense').classes('w-32')
+
                 def goto():
-                    no = idx_input.value
-                    try:
-                        idx = next(i for i, r in enumerate(store.records) if r.get(KEYNAME) == no)
-                    except StopIteration:
-                        ui.notify(f'找不到 {KEYNAME}={no}')
+                    field = jump_field_select.value
+                    if field == '_index':
+                        try:
+                            value = int(jump_value_input.value) - 1
+                        except ValueError:
+                            ui.notify('请输入有效的数字索引')
+                            return
+                        if value < 0 or value >= get_visible_count():
+                            ui.notify('索引超出范围')
+                            return
+                        set_current_index(value)
                         return
-                    set_current_index(idx)
+                    else:
+                        value = jump_value_input.value
+                        found_idx = None
+                        for i in range(get_visible_count()):
+                            real_idx = get_visible_index(i)
+                            rec = store.records[real_idx]
+                            if str(rec.get(field, '')) == value:
+                                found_idx = i
+                                break
+                        if found_idx is None:
+                            ui.notify(f'找不到 {field}={value}')
+                            return
+                        set_current_index(found_idx)
+                jump_value_input.on('keydown.enter', lambda e: goto())
                 ui.button('跳转', on_click=goto).props('dense')
             ui.separator().props('vertical')
             ui.button('保存', on_click=save_now).props('dense')

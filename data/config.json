@@ -2,6 +2,7 @@
   "input_file": {"path":"./拉鲁斯法汉双解词典.json","type":"json"},
   "output_file": "./data/拉鲁斯法汉双解词典.json",
   "key_name": "id",
+  "jump_fields": ["headword", "page"],
   "image_source":{
 	  "type":"pdf",
 	  "path": "./data/拉鲁斯法汉双解词典.pdf",
