@@ -214,18 +214,24 @@ def write_word_pos():
         json.dump(word_pos,f, ensure_ascii=False, indent=2)
 
 def grammar_check():
+    with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
+        data = json.load(f)
     with open('./data/larousse_grammar.txt','r',encoding='utf8') as f:
         from lark import Lark, UnexpectedInput
         grammar_text = f.read()
         errors = []
         larousse = Lark(grammar_text)
-        for word in words:
-            try:
-
-                parse_result = larousse.parse(word['text'])
-                #print(parse_result.pretty())
-            except UnexpectedInput as e:
-                errors.append((word,e))
+    parsed = []
+    for word in data:
+        try:
+            parse_result = larousse.parse(word['text'])
+            parsed.append((word,parse_result))
+            #print(parse_result.pretty())
+        except UnexpectedInput as e:
+            errors.append((word,e))
+    import pickle
+    with open('./parsed_data.pickle','wb') as f:
+        pickle.dump((parsed,errors),f)
     return errors
 
 def gen_diff_list(words,words_fr):
@@ -265,8 +271,8 @@ def gen_diff_list(words,words_fr):
         json.dump(wordmap_fr,f, ensure_ascii=False, indent=2)
 
 #with open('temp.txt','w',encoding='utf8') as f:
-words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
-words_fr = parse_entries('./dictionnaire de la langue française.txt')
+#words = parse_entries('./拉鲁斯法汉双解词典 文本.txt')
+#words_fr = parse_entries('./dictionnaire de la langue française.txt')
 #gen_diff_list(words,words_fr)
 def change_num(match):
     circled_num = "❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿"
@@ -274,18 +280,18 @@ def change_num(match):
     if num > 50:
         return match.group(0)
     return circled_num[num-1]
-for word in words_fr:
-    word['text'] = re.sub(r'\-\s*(\d+)\.',change_num,word['text'])
-    word['text'] = word['text'].replace("□","◇")
-word_by_page = split_page(words)
-word_by_page_fr = split_page(words_fr)
+#for word in words_fr:
+#    word['text'] = re.sub(r'\-\s*(\d+)\.',change_num,word['text'])
+#    word['text'] = word['text'].replace("□","◇")
+#word_by_page = split_page(words)
+#word_by_page_fr = split_page(words_fr)
 #match_image_pos(word_by_page)
-#grammar_check()
+grammar_check()
 
 #write_brackets_check_results()
 
-with open('拉鲁斯法汉双解词典.json','w',encoding='utf8') as f:
-    json.dump(words,f, ensure_ascii=False, indent=2)
+#with open('拉鲁斯法汉双解词典.json','w',encoding='utf8') as f:
+#    json.dump(words,f, ensure_ascii=False, indent=2)
 
-with open('french.json','w',encoding='utf8') as f:
-    json.dump(words_fr,f, ensure_ascii=False, indent=2)
+#with open('french.json','w',encoding='utf8') as f:
+#    json.dump(words_fr,f, ensure_ascii=False, indent=2)
