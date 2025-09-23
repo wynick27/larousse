@@ -794,7 +794,17 @@ def get_candidate(rec: any, field_name: str) -> Dict[str, str]:
 # =============================
 # Diff Engine (character-level, no tokenization)
 # =============================
-
+def merge_equal_ops(opcodes):
+    """合并连续 equal，避免碎片化"""
+    merged = []
+    for tag, i1, i2, j1, j2 in opcodes:
+        if merged and merged[-1][0] == "equal" and tag == "equal" \
+           and merged[-1][2] == i1 and merged[-1][4] == j1:
+            last = merged.pop()
+            merged.append(("equal", last[1], i2, last[3], j2))
+        else:
+            merged.append((tag, i1, i2, j1, j2))
+    return merged
 def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, int, int, int, int]]:
     sm = SequenceMatcher(a=a, b=b, autojunk=False)
     ops = sm.get_opcodes()
@@ -804,6 +814,9 @@ def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, in
     new_ops = []
     ignore_re = re.compile(ignore_pattern)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            new_ops.append((tag, i1, i2, j1, j2))
+            continue
         ai, aj = i1, j1
         while ai < i2 or aj < j2:
             # -------- 1) 先吃掉两侧的忽略字符，标记为 equal
@@ -817,16 +830,15 @@ def opcodes_for_diff(a: str, b: str,ignore_pattern = None) -> List[Tuple[str, in
                 continue  # 继续下一轮（可能还剩不忽略的字符）
 
             # -------- 2) 处理剩下的不忽略字符
-            if ai < i2 and aj < j2:
-                new_ops.append((tag, ai, ai+1, aj, aj+1))
-                ai += 1
-                aj += 1
-            elif ai < i2:
-                new_ops.append(("delete", ai, ai+1, aj, aj))
-                ai += 1
-            elif aj < j2:
-                new_ops.append(("insert", ai, ai, aj, aj+1))
-                aj += 1
+            seg_ai, seg_aj = ai, aj
+            while seg_ai < i2 and not ignore_re.match(a[seg_ai]):
+                seg_ai += 1
+            while seg_aj < j2 and not ignore_re.match(b[seg_aj]):
+                seg_aj += 1
+
+            # 直接输出整段
+            new_ops.append((tag, ai, seg_ai, aj, seg_aj))
+            ai, aj = seg_ai, seg_aj
     return new_ops
 
 
