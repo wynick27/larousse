@@ -780,7 +780,7 @@ def get_candidate(rec: any, field_name: str) -> Dict[str, str]:
     if filter_candidate:
          result["过滤器"] = filter_candidate(rec)
     for name, candidate in candidates.items():
-        rec_keyname = candidate.cfg.get('keyname')
+        rec_keyname = candidate.cfg.get('key')
         if rec_keyname and rec_keyname in rec:
             rec_key = rec[rec_keyname]
         else:

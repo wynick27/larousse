@@ -286,6 +286,24 @@ def change_num(match):
 #word_by_page = split_page(words)
 #word_by_page_fr = split_page(words_fr)
 #match_image_pos(word_by_page)
+with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
+    words = json.load(f)
+with open('./data/french.json','r',encoding='utf8') as f:
+    words_fr = json.load(f)
+def replace_prons(match):
+    text = match.group(0)
+    prons = match.group(1) or match.group(2)
+    newtext = prons.translate(str.maketrans({'r':'ʀ'}))
+    return text.replace('['+prons+']','['+newtext+']')
+
+for word in words:
+    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
+for word in words_fr:
+    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
+with open('./拉鲁斯法汉双解词典1.json','w',encoding='utf8') as f:
+    json.dump(words,f, ensure_ascii=False, indent=2)
+with open('./data/french1.json','w',encoding='utf8') as f:
+    json.dump(words_fr,f, ensure_ascii=False, indent=2)
 grammar_check()
 
 #write_brackets_check_results()
