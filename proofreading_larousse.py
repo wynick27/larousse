@@ -208,11 +208,12 @@ class BaseStore(ABC):
         else:
             self.path = path_or_cfg['path']
             self.cfg = path_or_cfg
-        if 'keyname' in self.cfg:
-            self.key_name = path_or_cfg['keyname']
+        if 'key' in self.cfg:
+            self.key_name = path_or_cfg['key']
         else:
             self.key_name = key_name
         self.records = []
+        self.data_map = {}
         self.dirty = False
 
     @abstractmethod
@@ -228,6 +229,8 @@ class BaseStore(ABC):
         self.dirty = True
 
     def get(self, key_value):
+        if key_value in self.data_map:
+            return self.data_map[key_value]
         for rec in self.records:
             if rec.get(self.key_name) == key_value:
                 return rec
@@ -318,18 +321,23 @@ class PdfStore(BaseStore):
 class TxtStore(BaseStore):
     def __init__(self, cfg, key_name):
         super().__init__(cfg['path'], key_name)
-        self.start_pat = re.compile(cfg.get('start', r'^'), re.M)
-        self.end_pat = re.compile(cfg.get('end', r'\Z'), re.M)
-        self.split_pat = re.compile(cfg.get('split', r'\n'), re.M)
-        self.page_pat =  re.compile(cfg.get('page'), re.M) if cfg.get('page') else None
+        self.start_pat = re.compile(cfg.get('start_pattern', r'^'), re.M)
+        self.end_pat = re.compile(cfg.get('end_pattern', r'\Z'), re.M)
+        self.split_pat = re.compile(cfg.get('split_pattern', r'\n'), re.M)
+        self.page_pat =  re.compile(cfg.get('page_pattern'), re.M) if cfg.get('page_pattern') else None
+        self.key_pat =  re.compile(cfg.get('key_pattern'), re.M) if cfg.get('key_pattern') else None
         self.is_grammar = cfg.get('is_grammar', False)
         self.fields_cfg = cfg.get('fields', {})
         self.grammar_path = cfg.get('grammar_path')
+        self.key_name = cfg.get('key')
         self.parser = None
         self.modified_recs = set()
         if self.is_grammar and self.grammar_path:
             grammar_text = Path(self.grammar_path).read_text(encoding='utf-8')
             self.parser = Lark(grammar_text, parser='lalr')
+        elif not self.is_grammar and not self.key_pat and self.key_name and self.key_name in self.fields_cfg:
+            self.key_pat = re.compile(self.fields_cfg[self.key_name])
+        self.auto_combine = cfg.get('auto_combine',False)
 
         self.prefix = ''
         self.suffix = ''
@@ -351,8 +359,9 @@ class TxtStore(BaseStore):
         self.records = []
         last_pos = 0
         cur_page = 0
+    
         cur_num = 0
-        if self.split_pat.pattern == '\n':
+        if self.split_pat.pattern == r'\n':
             self.lines = core_text.splitlines()
             for line_no,line in enumerate(self.lines):
                 if self.page_pat and (match := self.page_pat.match(line)):
@@ -360,12 +369,22 @@ class TxtStore(BaseStore):
                         cur_num = 0
                     cur_page = int(match.group(1))
                     continue
-                rec = {"no": cur_num+1, 'text': line, 'line': line_no}
+                if self.key_pat and self.auto_combine:
+                    if self.key_pat.search(line):
+                        rec = {"no": cur_num+1, 'text': line, 'line_no': line_no}
+                    elif self.records:
+                        rec = self.records[-1]
+                        rec['text'] += '\n' + line
+                        if not isinstance(rec['line_no'],list):
+                            rec['line_no'] = [rec['line_no']]
+                        rec['line_no'].append(line_no)
+
+                else:
+                    rec = {"no": cur_num+1, 'text': line, 'line_no': line_no}
                 if self.page_pat:
                     rec['page'] = cur_page
                 self.records.append(rec)
                 cur_num += 1
-            return
         else:
             self.lines = []
             self.separators = []
@@ -381,7 +400,17 @@ class TxtStore(BaseStore):
                         cur_num = 0
                     cur_page = int(match.group(1))
                     continue
-                rec = {"no": cur_num+1, 'text': segment, "line_no": len(self.lines)-1}
+                if self.key_pat and self.auto_combine:
+                    if self.key_pat.search(line):
+                        rec = {"no": cur_num+1, 'text': line, 'line_no': line_no}
+                    elif self.records:
+                        rec = self.records[-1]
+                        rec['text'] += '\n' + line
+                        if not isinstance(rec['line_no'],list):
+                            rec['line_no'] = [rec['line_no']]
+                        rec['line_no'].append(line_no)
+                else:
+                    rec = {"no": cur_num+1, 'text': segment, "line_no": len(self.lines)-1}
                 self.records.append(rec)
                 if self.page_pat:
                     rec['page'] = cur_page
@@ -412,6 +441,8 @@ class TxtStore(BaseStore):
                     for m in re.finditer(regex, seg, re.M):
                         rec.setdefault('_matches', {})[fname] = (m.start(), m.end(), m.group(0))
                         rec[fname] = m.group(1) if m.groups() else m.group(0)
+                        if self.key_name and fname == self.key_name:
+                            self.data_map[rec[fname]] = rec
 
 
     def set_field(self, index: int, field_name: str, value: str):
@@ -441,11 +472,14 @@ class TxtStore(BaseStore):
         for idx in self.modified_recs:
             rec = self.records[idx]
             if isinstance(rec['line_no'],list):
-                for line_no,text in zip(rec['line_no'],rec['text'].splitlines()):
+                text_list = rec['text'].splitlines()
+                if len(text_list) < rec['line_no']:
+                    text_list.extend(['']*len(rec['line_no'])- len(text_list))
+                for line_no,text in zip(rec['line_no'],text_list):
                     self.lines[line_no] = text
             else:
                 self.lines[rec['line_no']] = rec['text']
-        if self.split_pat.pattern == '\n':
+        if self.split_pat.pattern == r'\n':
             out_text = '\n'.join(self.lines)
         else:
             out_text = ''
@@ -637,6 +671,8 @@ def make_filter(f_cfg):
         # 检查候选来源是否完全一致
         source = f_cfg.get("source")  # 可选，指定候选来源
         ignore_pattern = f_cfg.get("ignore_pattern")
+        match_count = f_cfg.get('match_count',0)
+        match_ratio = f_cfg.get('match_ratio',0)
         ignore_re = re.compile(ignore_pattern) if ignore_pattern else None
         def _f(r):
             for field in FIELDS:
@@ -653,11 +689,15 @@ def make_filter(f_cfg):
                         if base != target:
                             return True
                     else:
+                        cur_match_count = 0
                         for target in cands.values():
                             if ignore_pattern:
                                 target = ignore_re.sub("",target)
-                            if base != target:
-                                return True
+                            if base == target:
+                                cur_match_count += 1
+                        if (match_count and cur_match_count < match_count) or \
+                            (match_ratio and cur_match_count / len(cands) < match_ratio):
+                            return True
             return False
         return _f
     elif ftype == "candidate_half_mismatch":
@@ -740,7 +780,7 @@ def get_candidate(rec: any, field_name: str) -> Dict[str, str]:
     if filter_candidate:
          result["过滤器"] = filter_candidate(rec)
     for name, candidate in candidates.items():
-        rec_keyname = candidate.cfg.get('keyname')
+        rec_keyname = candidate.cfg.get('key')
         if rec_keyname and rec_keyname in rec:
             rec_key = rec[rec_keyname]
         else:
@@ -1196,7 +1236,7 @@ def build_layout():
             real_idx = get_visible_index(current_index+offset)
             rec = store.records[real_idx]
             ui.label(f"{KEYNAME}={rec.get(KEYNAME)}").classes('text-h6 text-primary')
-            if image_source.get_position(rec.get(KEYNAME)):
+            if image_source and image_source.get_position(rec.get(KEYNAME)):
                 ui.image(f"/get_word_image?index={real_idx}").style("max-width: 400px; height: auto;")
             for f in FIELDS:
                 if FIELD_MODES[f] == 'normal':
