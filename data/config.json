@@ -25,7 +25,7 @@
 	  "type": "candidate_match",
 	  "field": "text",
 	  "source": "french",
-	  "ignore_pattern":"[\\u4e00-\\u9fff ,.:〔〕〈〉《》\\[\\]\\(\\)、。;/0-9!◇]",
+	  "ignore_pattern":"[\\u4e00-\\u9fff ,.:“”\"…〔〕〈〉《》\\[\\]\\(\\)、。;/0-9!◇]",
 	  "title": "法文全文匹配"
   },
   {
