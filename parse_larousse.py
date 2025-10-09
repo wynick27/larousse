@@ -93,11 +93,11 @@ def parse_entries(path:str,errorlog=None):
 
 def match_image_pos(words):
     errorlist = []
-
+    start_page = 72
     for page,words_in_page in enumerate(words,1):
-        if not os.path.exists(f'./json/page_{page+70:04}.json'):
+        if not os.path.exists(f'./json/page_{page+start_page:04}.json'):
             print(f'page {page} 标注未找到')
-        with open(f'./json/page_{page+70:04}.json') as f:
+        with open(f'./json/page_{page+start_page:04}.json') as f:
             annotation = json.load(f)
         entries = []
 
@@ -131,26 +131,27 @@ def match_image_pos(words):
                     word['position'].extend(position)
                 else:
                     word['position'] = position
-        elif len(words_in_page)  + 1 == len(entries):
-            print(f"错误： page {page} ({page+70}) 的单词数{len(words_in_page)}和标记数{len(entries)}不匹配")
-            pass
+        #elif len(words_in_page)  + 1 == len(entries):
+        #    print(f"错误： page {page} ({page+start_page}) 的单词数{len(words_in_page)}和标记数{len(entries)}不匹配")
+        #    pass
         else:
-            print(f"错误： page {page} ({page+70}) 的单词数{len(words_in_page)}和标记数{len(entries)}不匹配")
-            errorlist.append(page+69)
+            print(f"错误： page {page} ({page+start_page}) 的单词数{len(words_in_page)}和标记数{len(entries)}不匹配")
+            errorlist.append(page+start_page-1)
 
     print(errorlist)
 
 def combine_image_pos():
     word_pos = []
+    start_page = 72
     for page in range(1,2058):
-        if not os.path.exists(f'./json/page_{page+70:04}.json'):
+        if not os.path.exists(f'./json/page_{page+start_page:04}.json'):
             print(f'page {page} 标注未找到')
-        with open(f'./json/page_{page+70:04}.json') as f:
+        with open(f'./json/page_{page+start_page:04}.json') as f:
             annotation = json.load(f)
         entries = []
         cur_no = 1
         for index, entry in enumerate(annotation['entries']):
-            position_info = {'page':page+70, 'bbox':entry['coords']}
+            position_info = {'page':page+start_page, 'bbox':entry['coords']}
             if entry['is_headword']:
                 word_pos.append({"id":f"{page}.{cur_no}","page":page,"position":[position_info]})
                 cur_no += 1
@@ -283,27 +284,31 @@ def change_num(match):
 #for word in words_fr:
 #    word['text'] = re.sub(r'\-\s*(\d+)\.',change_num,word['text'])
 #    word['text'] = word['text'].replace("□","◇")
-#word_by_page = split_page(words)
+
 #word_by_page_fr = split_page(words_fr)
-#match_image_pos(word_by_page)
+
 with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
     words = json.load(f)
 with open('./data/french.json','r',encoding='utf8') as f:
     words_fr = json.load(f)
+word_by_page = split_page(words)
+match_image_pos(word_by_page)
+write_word_pos()
+
 def replace_prons(match):
     text = match.group(0)
     prons = match.group(1) or match.group(2)
     newtext = prons.translate(str.maketrans({'r':'ʀ'}))
     return text.replace('['+prons+']','['+newtext+']')
 
-for word in words:
-    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
-for word in words_fr:
-    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
-with open('./拉鲁斯法汉双解词典1.json','w',encoding='utf8') as f:
-    json.dump(words,f, ensure_ascii=False, indent=2)
-with open('./data/french1.json','w',encoding='utf8') as f:
-    json.dump(words_fr,f, ensure_ascii=False, indent=2)
+#for word in words:
+#    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
+#for word in words_fr:
+#    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
+#with open('./拉鲁斯法汉双解词典1.json','w',encoding='utf8') as f:
+#    json.dump(words,f, ensure_ascii=False, indent=2)
+#with open('./data/french1.json','w',encoding='utf8') as f:
+#    json.dump(words_fr,f, ensure_ascii=False, indent=2)
 grammar_check()
 
 #write_brackets_check_results()

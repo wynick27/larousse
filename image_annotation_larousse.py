@@ -9,8 +9,8 @@ from sklearn.cluster import KMeans
 # -----------------------------
 # 配置参数（需要时调整）
 # -----------------------------
-PDF_PATH = "./data/拉鲁斯法汉双解词典.pdf"
-PAGE_NUMBER = 70  # 0-based index
+PDF_PATH = "./data/ocr-法汉双解词典-2130p.pdf"
+PAGE_NUMBER = 72  # 0-based index
 MIN_WORD_HEIGHT = 5      # 忽略过小噪点（行高度最小）
 HEADER_ROW_RATIO = 0.6   # 顶部行黑色像素比例高于这个值认为是页眉/横线
 BLANK_COL_RATIO = 0.02   # 每列黑色像素低于这个比例认为是“空白列”
@@ -40,7 +40,7 @@ def classify_wordlines(left_positions):
     max_left = max(left_positions) if left_positions else 0
     
     lines = []
-    if max_left - min_left < 30: #无headword
+    if max_left - min_left <= 40: #无headword
         lines.append((0,len(left_positions) -1 , False))
         return lines
     
@@ -99,7 +99,8 @@ def get_annotation(img,deskew = False):
 
     # 灰度 & 自适应二值化（文字为 255, 背景为 0）
     gray = np.array(img.convert("L"))
-    _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+    
+    _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
 
     row_sum = np.sum(binary !=0, axis=1) / binary.shape[1]  # 每行黑色像素比例
     header_rows = 0
@@ -113,8 +114,11 @@ def get_annotation(img,deskew = False):
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)  #去噪点
     for i in range(1, num_labels):
         x, y, w, h, area = stats[i]
-        if area <= 20 :
+        if area <= 80 :
             binary[labels == i] = 0
+        elif w < 30 and h >200:
+            binary[labels == i] = 0
+    
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 1))
     morph = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
     
@@ -123,15 +127,18 @@ def get_annotation(img,deskew = False):
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(morph, connectivity=8)
     for i in range(1, num_labels):
         x, y, w, h, area = stats[i]
-        if w > 0.5*binary.shape[1] and h <= 20:  # 宽很大，高度很小
+        if w > 0.5*binary.shape[1]: # and h <= 20:  # 宽很大，高度很小
             header = [int(x),int(y),int(w),int(h)]
             print("横线 bbox:", x, y, w, h)
             header_rows = y+h
             result['header'] = header
+            binary[:,0:x-20] = 0
+            binary[:,x+w+20:] = 0
+    Image.fromarray(binary).save('binary.png')
     if not header:
         for i in range(1, num_labels):
             x, y, w, h, area = stats[i]
-            if h > 50 and (img_w*0.4 < x < img_w*0.6): #h > 3*avg_line_height and
+            if h > 100 and (img_w*0.4 < x < img_w*0.6): #h > 3*avg_line_height and
                 print("发现中间大字母:", x,y,w,h)
                 header = [int(x),int(y),int(w),int(h)]
                 header_rows = y+h
@@ -149,7 +156,8 @@ def get_annotation(img,deskew = False):
     if len(blank_cols) > 0:
         # 将连续的列聚成段，找最长段
         segments = np.split(blank_cols, np.where(np.diff(blank_cols) != 1)[0] + 1)
-        best_seg = max(segments[1:-1], key=lambda s: s.size)
+        segments = list(filter(lambda arr:arr[0] >= img_w*0.4 and arr[-1] <= img_w*0.6,segments))
+        best_seg = max(segments, key=lambda s: s.size)
         mid_col = int(best_seg[best_seg.size * 2 // 5])
     else:
         mid_col = binary_trim.shape[1] // 2  # 兜底
@@ -213,7 +221,8 @@ def get_annotation(img,deskew = False):
     return result
 
 def draw_page(img,annotation):
-    rgb =ImageOps.invert(img).convert("RGB")
+    #rgb =ImageOps.invert(img).convert("RGB")
+    rgb = img.convert("RGB")
     draw = ImageDraw.Draw(rgb)
 
     # 画页眉分界线（若检测到）
@@ -320,10 +329,10 @@ def annotate_pages(pdf_path, start_page, json_path = None, img_dir = None, deske
 
 
 if __name__ == '__main__':
-    #annotate_pages(PDF_PATH,PAGE_NUMBER, OUTPUT_JSON, OUTPUT_IMG)
+   # annotate_pages(PDF_PATH,112, OUTPUT_JSON, OUTPUT_IMG)
     #error_imgs = [132, 134, 150, 192, 197, 206, 245, 272, 291, 345, 365, 370, 380, 477, 486, 507, 542, 576, 607, 615, 630, 633, 635, 686, 688, 689, 703, 706, 752, 754, 790, 802, 822, 827, 832, 848, 870, 891, 892, 896, 905, 907, 914, 919, 956, 966, 1015, 1022, 1053, 1107, 1140, 1142, 1146, 1150, 1151, 1154, 1158, 1212, 1221, 1227, 1247, 1253, 1255, 1267, 1286, 1305, 1308, 1332, 1360, 1397, 1405, 1408, 1420, 1453, 1480, 1500, 1503, 1520, 1530, 1541, 1552, 1556, 1592, 1616, 1649, 1656, 1660, 1748, 1749, 1766, 1795, 1828, 1836, 1838, 1840, 1845, 1859, 1916, 1918, 1942, 1980, 1987, 1992, 2008, 2022, 2038, 2062, 2070, 2082, 2110, 2120] 
     #annotate_pages(PDF_PATH,error_imgs, OUTPUT_JSON, OUTPUT_IMG, True)
 
     #annotate_pages(PDF_PATH,[2120], OUTPUT_JSON, OUTPUT_IMG)
-    error_images = [134, 272, 607, 686, 688, 703, 822, 892, 919, 966, 1022, 1150, 1151, 1212, 1221, 1267, 1305, 1325, 1332, 1360, 1397, 1420, 1453, 1480, 1541, 1556, 1592, 1649, 1656, 1845, 1918, 1980, 1987, 2008, 2022, 2110]
-    annotate_pages(PDF_PATH,error_images, OUTPUT_JSON, OUTPUT_IMG, True)
+    error_images = [1024, 1126, 1141, 1327, 1608, 2092]
+    annotate_pages(PDF_PATH,error_images, OUTPUT_JSON, OUTPUT_IMG)
