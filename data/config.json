@@ -34,6 +34,12 @@
 	  "source": "french",
 	  "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖║◆]",
 	  "title": "法文符号匹配"
+  },
+  {
+	  "type": "regex",
+	  "field": "text",
+	  "pattern":"◇ *Formule",
+	  "title": "法文公式匹配"
   }
   ],
   "items_per_page": 1,

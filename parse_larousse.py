@@ -220,16 +220,16 @@ def grammar_check():
     with open('./data/larousse_grammar.txt','r',encoding='utf8') as f:
         from lark import Lark, UnexpectedInput
         grammar_text = f.read()
-        errors = []
+        errors = {}
         larousse = Lark(grammar_text)
-    parsed = []
+    parsed = {}
     for word in data:
         try:
             parse_result = larousse.parse(word['text'])
-            parsed.append((word,parse_result))
+            parsed[word['headword']] = parse_result
             #print(parse_result.pretty())
         except UnexpectedInput as e:
-            errors.append((word,e))
+            errors[word['headword']] = e
     import pickle
     with open('./parsed_data.pickle','wb') as f:
         pickle.dump((parsed,errors),f)
@@ -292,19 +292,20 @@ with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
 with open('./data/french.json','r',encoding='utf8') as f:
     words_fr = json.load(f)
 word_by_page = split_page(words)
-match_image_pos(word_by_page)
-write_word_pos()
+#match_image_pos(word_by_page)
+#write_word_pos()
 
 def replace_prons(match):
     text = match.group(0)
     prons = match.group(1) or match.group(2)
-    newtext = prons.translate(str.maketrans({'r':'ʀ'}))
+    newtext = prons.translate(str.maketrans({'r':'ʀ','R':'ʀ'}))
     return text.replace('['+prons+']','['+newtext+']')
 
 #for word in words:
 #    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
 #for word in words_fr:
-#    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[([^\u4e00-\u9fff]+?)\]|(?:\-?[A-Z]\. ?){2,5}\[([^\u4e00-\u9fff]+)\]',replace_prons,word['text'])
+#    word['text'] = re.sub(r'(?i)^(?:\d+\.\s*)?\*? *(?:[A-Za-zàâçéèêëîïôöûùüÿñæœ][a-zàâçéèêëîïôöûùüÿñæœ\-\']*(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+){,2} *(?:, *[a-zéèêëîïôöûùü]+ *){,2})(?: *(?:ou|et) *\*?[a-zàâçéèêëîïôöûùüÿñæœ\-\']+(?: [a-zàâçéèêëîïôöûùüÿñæœ\-\']+)? *(?:, *[a-zéèêëîïôöûùü]+ *){,2})?(?: \(de\) *)?\[((?!pl\.)[^\u4e00-\u9fff]{1,20}?)\]|(?:\-?[A-Z]\. ?){2,5}\[((?!pl\.)[^\u4e00-\u9fff]{1,20}?)\]',replace_prons,word['text'])
+#    word['text'] = word['text'].replace("□","◇")
 #with open('./拉鲁斯法汉双解词典1.json','w',encoding='utf8') as f:
 #    json.dump(words,f, ensure_ascii=False, indent=2)
 #with open('./data/french1.json','w',encoding='utf8') as f:
