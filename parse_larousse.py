@@ -223,17 +223,31 @@ def grammar_check():
         errors = []
         larousse = Lark(grammar_text)
     parsed = []
+
     for word in data:
         try:
             parse_result = larousse.parse(word['text'])
             parsed.append((word,parse_result))
             #print(parse_result.pretty())
         except UnexpectedInput as e:
+            print(f"{word['headword']}({word['page']})\n{e}")
             errors.append((word,e))
+    with open('error_parse.txt','w',encoding='utf8') as f:
+        for word,error in errors:
+            f.write(f"{word['text']}\n")
+    with open('error_log.txt','w',encoding='utf8') as f:
+        for word,error in errors:
+            f.write(f"{word['headword']}({word['page']})\n{word['text']}\n{error}\n")
     import pickle
     with open('./parsed_data.pickle','wb') as f:
-        pickle.dump((parsed,errors),f)
+        pickle.dump(parsed,f)
     return errors
+
+def load_parsed_data():
+    import pickle
+    with open('./parsed_data.pickle','rb') as f:
+        parsed,errors = pickle.load(f)
+    return parsed,errors
 
 def gen_diff_list(words,words_fr):
     wordset_zh = {}
@@ -291,9 +305,9 @@ with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
     words = json.load(f)
 with open('./data/french.json','r',encoding='utf8') as f:
     words_fr = json.load(f)
-word_by_page = split_page(words)
-match_image_pos(word_by_page)
-write_word_pos()
+#word_by_page = split_page(words)
+#match_image_pos(word_by_page)
+#write_word_pos()
 
 def replace_prons(match):
     text = match.group(0)
@@ -309,7 +323,10 @@ def replace_prons(match):
 #    json.dump(words,f, ensure_ascii=False, indent=2)
 #with open('./data/french1.json','w',encoding='utf8') as f:
 #    json.dump(words_fr,f, ensure_ascii=False, indent=2)
-grammar_check()
+errors = grammar_check()
+#parsed,errors = load_parsed_data()
+#for word,error in errors:
+#    print(f"{word['headword']}({word['page']})\n{error}")
 
 #write_brackets_check_results()
 
