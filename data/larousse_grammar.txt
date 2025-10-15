@@ -1,5 +1,5 @@
 start: wordhead
-wordhead: (WORD pron? (("et"| "ou") WORD pron)? (POS+ ("et" POS+)? | ",") | WORD ",") /.+/
+wordhead: (WORD pron? (("et"| "ou") WORD pron)? (POS+ ("et" POS+)? | ",") | WORD pron | WORD ",") /.+/
 word: WORD pron? (("et"| "ou") WORD pron)? POS+ ("et" POS+)? (link | content) ("◆" WORD? POS+ content)*
 
 content : A_OR_DE? etymology? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
@@ -47,7 +47,7 @@ ENCYCLOPEDIA: /◇[a-zA-Z0-9ÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôù
 BLACK_NUM: /[❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴]/
 
 
-WORD: /([A-Z]\. ?){2,}|([0-9]\. *)?\*?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöü'\-]+( [0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+\b(?!\.))*(, *(?!préfixe|sigle)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*/
+WORD: /([A-Z]\. ?){2,}|([0-9]\. *)?\*?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöü'\-]+( (?!ou\b)[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ'\-]+\b(?!\.))*(, *(?!préfixe|sigle|préf\.)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*/
 
 
 %import common.WS
