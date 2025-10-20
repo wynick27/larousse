@@ -218,7 +218,7 @@ def grammar_check():
     with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
         data = json.load(f)
     with open('./data/larousse_grammar.txt','r',encoding='utf8') as f:
-        from lark import Lark, UnexpectedInput
+        from lark import Lark, UnexpectedInput, Token
         grammar_text = f.read()
         errors = []
         larousse = Lark(grammar_text)
@@ -228,6 +228,9 @@ def grammar_check():
         try:
             parse_result = larousse.parse(word['text'])
             parsed.append((word,parse_result))
+            #for token in parse_result.scan_values(lambda v: isinstance(v, Token) and v.type == 'WORD'):
+            #    print(token, token.value, token.start_pos, token.end_pos, token.line, token.column)
+
             #print(parse_result.pretty())
         except UnexpectedInput as e:
             print(f"{word['headword']}({word['page']})\n{e}")
@@ -305,8 +308,8 @@ with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
     words = json.load(f)
 with open('./data/french.json','r',encoding='utf8') as f:
     words_fr = json.load(f)
-#word_by_page = split_page(words)
-#match_image_pos(word_by_page)
+word_by_page = split_page(words)
+match_image_pos(word_by_page)
 #write_word_pos()
 
 def replace_prons(match):
