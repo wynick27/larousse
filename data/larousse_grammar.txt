@@ -1,5 +1,5 @@
 start: wordhead
-wordhead: (WORD PAREN_ENCLOSED? pron? (("et"| "ou") VXTAG? WORD? pron)? (POS+ ("et" POS+)? | ",") | WORD pron | WORD (","|"→"|"sigle de")) /.+/
+wordhead: (WORD PAREN_ENCLOSED? pron? (("et"| "ou") VXTAG? WORD? pron)* (POS+ ("et" POS+)? | ",") | WORD PAREN_ENCLOSED? pron ("ou" WORD)? | WORD PAREN_ENCLOSED PAREN_ENCLOSED | WORD "," POS+ (WORD  POS+)+ "→"| WORD (","|"→"|"sigle de")) /.+/
 word: WORD pron? (("et"| "ou") WORD pron)? POS+ ("et" POS+)? (link | content) ("◆" WORD? POS+ content)*
 
 content : A_OR_DE? etymology? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
@@ -35,7 +35,7 @@ FR_WORD: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ
 
 FR_SENT: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ,\. ]+/
 
-FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\|\-=+\.,:;«»₂₃%°*\!'\? ]|\((?![\u4e00-\u9fff]).+?\)|\[(?![\u4e00-\u9fff]).+?\])+/
+FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\|\-=+\.,:;«»₂₃ᵉ%°*\!'\? ]|\((?![\u4e00-\u9fff]).+?\)|\[(?![\u4e00-\u9fff]).+?\])+/
 
 ZH_SIMPLE: /[\u4e00-\u9fff]+/
 
@@ -49,7 +49,7 @@ ENCYCLOPEDIA: /◇[a-zA-Z0-9ÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôù
 BLACK_NUM: /[❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴]/
 
 
-WORD: /([0-9]\. *)?((\-?[A-Za-z]\. ?){2,}|\*?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöü'\-]+( (?!ou\b)[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ'\-]+\b(?!\.))*(, *(?!préfixe|sigle|préf\.)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*)/
+WORD: /([0-9]\. *)?(C\. A\. C\. 40|b\.a\.\-ba|(\-?[A-Za-z]\. ?){2,}|\*?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöüñ'\-]+( (?!ou\b|et\b)[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ'\-]+\b(?!\.))*(, *(?!préfixe|abrév|sigle|préf\.)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*)/
 
 
 %import common.WS
