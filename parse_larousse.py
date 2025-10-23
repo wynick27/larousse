@@ -228,9 +228,12 @@ def add_suffix_by_first_letter(word: str, suffix: str) -> str:
     """
     if not suffix:
         return word  # 没有后缀，返回原词
+    
+    if len(suffix) > 6 :
+        return suffix
 
     # 若以 'e' 结尾，直接加后缀
-    if word.endswith('e'):
+    if suffix == 'e':
         return word + suffix
 
     first = suffix[0]
@@ -318,9 +321,20 @@ def headword_expand():
         if re.match(r'^[0-9]\. ',text):
             text = text[3:]
             start += 3
+        
         if text.startswith('*'):
             text = text[1:]
             start += 1
+        original_text = text
+        if text.startswith('à la '):
+            text = text[5:]
+            start += 5
+        if text.startswith('à l\''):
+            text = text[4:]
+            start += 4
+        if text.startswith('à '):
+            text = text[2:]
+            start += 2
         if text.startswith('s\''):
             text = text[2:]
             start += 2
@@ -328,7 +342,7 @@ def headword_expand():
             text = text[3:]
             start += 3
         
-        return text, (start,end)
+        return original_text,text, (start,end)
     for word in data:
         try:
             parse_result = larousse.parse(word['text'])
@@ -338,7 +352,9 @@ def headword_expand():
             bold_ranges = []
             root_word = ''
             for token in parse_result.scan_values(lambda v: isinstance(v, Token) and v.type == 'WORD'):
-                text, range = clean(token)
+                text, text1, range = clean(token)
+                if text != text1:
+                    expand_words.append(text1)
                 bold_ranges.append(range)
                 parts = [part.strip() for part in text.split(',')]
                 if root_word == '' or parts[0] not in ['aux','als','one']:
@@ -349,17 +365,19 @@ def headword_expand():
                         print(f"警告：词头不匹配 {word['headword']} vs {root_word} (page {word['page']})")
                         expand_words.append(root_word)
                     if len(parts) > 1:
-                        print(text)
+                        #print(text)
                         suffixes = parts[1:]
                         for suffix in suffixes:
                             new_word = add_suffix_by_first_letter(root_word, suffix)
-                            print('->',new_word)
+                            #print('->',new_word)
                             expand_words.append(new_word)
                 else:
                     print(text)
                     new_word = add_suffix_by_first_letter(root_word, text)
                     print('->',new_word)
                     expand_words.append(new_word)
+            if word['main_word'] in expand_words:
+                expand_words.remove(word['main_word'])
             if expand_words:
                 word['expanded_words'] = expand_words
             normalized_word = normalize_french(root_word)
@@ -370,7 +388,7 @@ def headword_expand():
                     if normalized_ew != ew:
                         normalized_words.append(normalized_ew)
             if normalized_words:
-                word['normalized_words'] = normalized_words
+                word['normalized_words'] = list(set(normalized_words))
             word['text'] = add_bold_tags(word['text'], bold_ranges)
 
             #print(parse_result.pretty())
@@ -383,6 +401,23 @@ def headword_expand():
 
     return errors
 
+from lark import Tree, Token
+def tree_to_dict(node):
+    if isinstance(node, Tree):
+        return {
+            "type": node.data.type,
+            "type": node.data.value,
+            "start_pos": getattr(node.meta, "start_pos", None),
+            "end_pos": getattr(node.meta, "end_pos", None),
+            "children": [tree_to_dict(child) for child in node.children]
+        }
+    elif isinstance(node, Token):
+        return {
+            "type": node.type,
+            "value": node.value,
+            "start_pos": getattr(node, "start_pos", None),
+            "end_pos": getattr(node, "end_pos", None)
+        }
 def grammar_check():
     with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
         data = json.load(f)
@@ -390,6 +425,7 @@ def grammar_check():
         from lark import Lark, UnexpectedInput, Token
         grammar_text = f.read()
         errors = []
+        #larousse = Lark(grammar_text,propagate_positions=True)
         larousse = Lark(grammar_text)
     parsed = []
         
@@ -397,6 +433,7 @@ def grammar_check():
         try:
             parse_result = larousse.parse(word['text'])
             parsed.append((word,parse_result))
+            #word['parse_tree'] = tree_to_dict(parse_result)
             #print(parse_result.pretty())
         except UnexpectedInput as e:
             print(f"{word['headword']}({word['page']})\n{e}")
@@ -404,12 +441,17 @@ def grammar_check():
     with open('error_parse.txt','w',encoding='utf8') as f:
         for word,error in errors:
             f.write(f"{word['text']}\n")
-    with open('error_log.txt','w',encoding='utf8') as f:
+    with open('./data/error_parse.json','w',encoding='utf8') as f:
+        error_map = {}
         for word,error in errors:
-            f.write(f"{word['headword']}({word['page']})\n{word['text']}\n{error}\n")
-    import pickle
-    with open('./parsed_data.pickle','wb') as f:
-        pickle.dump(parsed,f)
+            text = word['text'][:error.pos_in_stream] + '^' + word['text'][error.pos_in_stream:] 
+            error_map[word['id']] ={'text':text} 
+        json.dump(error_map,f, ensure_ascii=False, indent=2)
+    with open('./拉鲁斯法汉双解词典_parsed.json','w',encoding='utf8') as f:
+        json.dump(data,f, ensure_ascii=False, indent=2)
+    #import pickle
+    #with open('./parsed_data.pickle','wb') as f:
+    #    pickle.dump(parsed,f)
     return errors
 
 def load_parsed_data():
@@ -493,6 +535,8 @@ def replace_prons(match):
 #    json.dump(words,f, ensure_ascii=False, indent=2)
 #with open('./data/french1.json','w',encoding='utf8') as f:
 #    json.dump(words_fr,f, ensure_ascii=False, indent=2)
+
+#headword_expand()
 errors = grammar_check()
 #parsed,errors = load_parsed_data()
 #for word,error in errors:

@@ -12,8 +12,7 @@
   
   "candidates": {
 	  "french": {"path": "./data/french.json", "key":"headword"},
-	  "textin": "./data/textin.json",
-	  "quark": "./data/quark.json"
+	  "parse_error": "./data/error_parse.json"
   },
   "filters":[
   {
@@ -31,6 +30,12 @@
   {
 	  "type": "candidate_match",
 	  "field": "text",
+	  "source": "parse_error",
+	  "title": "语法错误匹配"
+  },
+  {
+	  "type": "candidate_match",
+	  "field": "text",
 	  "source": "french",
 	  "ignore_pattern":"[^❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴→‖║◆]",
 	  "title": "法文符号匹配"
@@ -44,6 +49,6 @@
   ],
   "items_per_page": 1,
   "field_config": {
-    "text": {"label": "释义", "mode": "normal", "ignore_pattern":"[\\u4e00-\\u9fff ,.:“”\"…〔〕〈〉《》\\[\\]\\(\\)、。;/0-9!◇]"}
+    "text": {"label": "释义", "mode": "normal", "ignore_pattern":"[\\u4e00-\\u9fff ,.“”\"…〔〕〈〉《》\\[\\]\\(\\)、。/0-9!◇]"}
   }
 }
