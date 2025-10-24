@@ -2,11 +2,11 @@ start: word
 wordhead_only: (WORD PAREN_ENCLOSED? pron? (("et"| "ou") VXTAG? WORD? pron)* (POS+ ("et" POS+)? | ",") | WORD PAREN_ENCLOSED? pron | WORD PAREN_ENCLOSED PAREN_ENCLOSED | WORD "," POS+ (WORD  POS+ (","|"→"))+| WORD ("ou" WORD)? (","|"→"|"sigle de")) /.+/
 word: wordhead content ("◆" WORD? (("et"| "ou") WORD)? pos content)*
 
-wordhead: WORD pron? pos? (("et"| "ou") VXTAG? WORD pron)* pos | WORD PAREN_ENCLOSED? pron | WORD ("ou" WORD)? ","
+wordhead: WORD pron? pos? (("et"| "ou") VXTAG? WORD pron)* pos A_OR_DE? etymology? | WORD PAREN_ENCLOSED? pron | WORD ("ou" WORD)? PAREN_ENCLOSED? ","
 
 pos: POS+ (("et"| "ou") POS+)?
 
-content : A_OR_DE? etymology? category? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
+content : category? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
 usage_list: (usage explanation_list)+
 usage: ("-"? ROMAN_NUM ".")? (FR_WORD | FR_SENT ) ("[" ZH_SIMPLE "]" ":"?|":")
 explanation_list: (BLACK_NUM category? explanation)+
@@ -25,7 +25,7 @@ A_OR_DE: /\[(à|de)\]/
 
 category: CATEGORY_FR+ CATEGORY_ZH? | CATEGORY_ZH
 
-CATEGORY_FR: /[A-ZÀÂÉÊÈËÌÏÎÔÙÛ]+\.|〔[A-ZÀÂÉÊÈËÌÏÎÔÙÛ]+\.(,? +[A-ZÀÂÉÊÈËÌÏÎÔÙÛ]+\.)*〕/
+CATEGORY_FR: /[A-ZÀÂÉÊÈËÌÏÎÔÙÛ]+\./
 
 CATEGORY_ZH: /〈.+?〉|〔.+?〕/
 
@@ -47,13 +47,13 @@ FR_WORD: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ
 
 FR_SENT: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ,\.\- ]+/
 
-FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\|\-=+\.,:;«»₂₃×ᵉ%°*\!'\? ]|\/(?=[0-9a-zA-Z])|\((?![\u3400-\u4dbf\u4e00-\u9fff]).+?\)|\[(?![\u3400-\u4dbf\u4e00-\u9fff]).+?\])+/
+FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöüñ\u2200-\u22ff\u2070-\u209f\u0370-\u03ff|\-=+\.,·:;«»×ᵉ%°*\!'\? ]|\/(?=[0-9a-zA-Z])|\((?![\u3400-\u4dbf\u4e00-\u9fff]).+?\)|\[(?![\u3400-\u4dbf\u4e00-\u9fff]).+?\])+/
 
 ZH_SIMPLE: /[\u3400-\u4dbf\u4e00-\u9fff]+/
 
-ZH: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\u3400-\u4dbf\u4e00-\u9fff0-9;\.,〈〉〔〕（）：？！；…、。\[\]\(\)\/“”?!℃% ]|\/(?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\)]+?\])*[\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）。”？！!?%](\([^\)]+?\))?|[\u3400-\u4dbf\u4e00-\u9fff]/
+ZH: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\u2200-\u22ff\u3400-\u4dbf\u4e00-\u9fff\u0370-\u03ff0-9;\.,〈〉〔〕（）：？！；…、。\[\]\(\)\/“”?!℃% ]|\/(?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\)]+?\])*[\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）。”？！!?%](\([^\)]+?\))?|[\u3400-\u4dbf\u4e00-\u9fff]/
 
-ZH_SENT: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈《〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([\u3400-\u4dbf\u4e00-\u9fff0-9;\.,《》〈〉〔〕（）：？！；?…、。“”!℃%·\-— ]|[\/:](?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\/ *(?=\(?[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\]]+?\]|(?<=“)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ \-]+)*([\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）《》。”？・—！!?%\.]|\([^\)]+?\)|\[[^\]]+?\])|[\u3400-\u4dbf\u4e00-\u9fff]/
+ZH_SENT: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈《〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([\u3400-\u4dbf\u4e00-\u9fff\u0370-\u03ff0-9;\.,《》〈〉〔〕（）：？！；?…、。“”!℃%·\-— ]|[\/:](?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\/ *(?=\(?[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\]]+?\]|(?<=“)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ \-]+)*([\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）《》。”？・—！!?%\.]|\([^\)]+?\)|\[[^\]]+?\]|(?<=[\u4e00-\u9fff])[a-zA-Z\u4e00-\u9fff])|[\u3400-\u4dbf\u4e00-\u9fff]/
 
 ENCYCLOPEDIA: /◇[^◇❶-❿⓫-⓴◆‖]+/
 
