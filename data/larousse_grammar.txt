@@ -1,29 +1,29 @@
 start: word
 wordhead_only: (WORD PAREN_ENCLOSED? pron? (("et"| "ou") VXTAG? WORD? pron)* (POS+ ("et" POS+)? | ",") | WORD PAREN_ENCLOSED? pron | WORD PAREN_ENCLOSED PAREN_ENCLOSED | WORD "," POS+ (WORD  POS+ (","|"→"))+| WORD ("ou" WORD)? (","|"→"|"sigle de")) /.+/
-word: wordhead content ("◆" WORD? (("et"| "ou") WORD)? pos content)*
+word: wordhead content ("◆" WORD? (("et"| "ou") WORD)? GRAMMAR? (PAREN_ENCLOSED | pos) content)*
 
-wordhead: WORD pron? pos? (("et"| "ou") VXTAG? WORD pron)* pos A_OR_DE? etymology? | WORD PAREN_ENCLOSED? pron | WORD ("ou" WORD)? PAREN_ENCLOSED? ","
+wordhead: WORD pron? GRAMMAR? pos? (("et"| "ou") VXTAG? WORD pron)* pos GRAMMAR? etymology? | WORD pron ("," WORD pron)* pos? etymology | WORD PAREN_ENCLOSED? pron | WORD ("ou" WORD)? PAREN_ENCLOSED? "," |WORD_LINK
 
 pos: POS+ (("et"| "ou") POS+)?
 
 content : category? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
-usage_list: (usage explanation_list)+
-usage: ("-"? ROMAN_NUM ".")? (FR_WORD | FR_SENT ) ("[" ZH_SIMPLE "]" ":"?|":")
+usage_list: (usage (explanation_list|explanation))+
+usage: ("-"? ROMAN_NUM ".")? (FR_WORD | FR_SENT ) ("[" ZH_SIMPLE "]" ":"?|":") | "-" ROMAN_NUM "." PAREN_ENCLOSED BRACKET_ENCLOSED? BRACKET_ENCLOSED? 
 explanation_list: (BLACK_NUM category? explanation)+
-explanation:  PAREN_ENCLOSED? (FR ZH_SENT | link) PAREN_ENCLOSED? example_list ("‖" phrase)* rem?
+explanation:  PAREN_ENCLOSED? (FR ZH | link | FR link) PAREN_ENCLOSED? example_list ("‖" phrase)* rem?
 
 example_list: (":" example ("/"? example)*)? encyclopedia* 
-example:  FR ZH_SENT PAREN_ENCLOSED?
-phrase:  FR (ZH_SENT|link_simple) PAREN_ENCLOSED? example_list
+example:  FR ZH PAREN_ENCLOSED?
+phrase:  FR (ZH|link) PAREN_ENCLOSED? example_list
 etymology: PAREN_ENCLOSED BRACKET_ENCLOSED? ETYM_ZH?
 encyclopedia:ENCYCLOPEDIA
-link: FR_SENT? "→" WORD ("," WORD)* "."?
-link_simple: "→" WORD "."?
+//link: FR_SENT? "→" WORD ("," WORD)* "."?
+link: "→" WORD ("," WORD)* "."? ZH?
 rem: "Rem."  FR ZH example_list
 pron: PRON ("ou" PRON)?
-A_OR_DE: /\[(à|de)\]/
+GRAMMAR: /\[[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-, 0-9\.]+\]/
 
-category: CATEGORY_FR+ CATEGORY_ZH? | CATEGORY_ZH
+category: CATEGORY_FR+("et" CATEGORY_FR)? CATEGORY_ZH? | CATEGORY_ZH
 
 CATEGORY_FR: /[A-ZÀÂÉÊÈËÌÏÎÔÙÛ]+\./
 
@@ -33,6 +33,8 @@ PRON: /\[.+?\]/
 
 ROMAN_NUM: /[IV]+/
 
+PAREN_NEST: /\(([^\(\)\[\]]|\([^\）]+\)|\[[^\]]+\])+?\)\.?/
+
 PAREN_ENCLOSED: /\(.+?\)\.?/
 
 BRACKET_ENCLOSED: /\[.+?\]\.?/
@@ -41,25 +43,25 @@ ETYM_ZH: /《.+》/
 
 VXTAG: /,? *(VIEILLI|VX) *,? *(〈旧〉)?/
 
-POS: /(?:n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|interj|impers|coord|card|art|déf|pron|pers|indéf|conj|num|sub|sing|dém|ord)\./
+POS: /(?:n|[mf]|adj|v|[it]|adv|inv|pl|pr|prép|ind|loc|interj|impers|poss|exclam|relat|verb|en genre|coord|card|art|déf|pron|pers|indéf|conj|num|sub|sing|dém|ord)\./
 
-FR_WORD: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+/
+FR_WORD: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-\']+/
 
-FR_SENT: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ,\.\- ]+/
+FR_SENT: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ,\.\-\' ]+/
 
-FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöüñ\u2200-\u22ff\u2070-\u209f\u0370-\u03ff|\-=+\.,·:;«»×ᵉ%°*\!'\? ]|\/(?=[0-9a-zA-Z])|\((?![\u3400-\u4dbf\u4e00-\u9fff]).+?\)|\[(?![\u3400-\u4dbf\u4e00-\u9fff]).+?\])+/
+FR: /([0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒĀàâéêèëìïîôùûçæœöüñā\u2200-\u22ff\u2070-\u209f\u0370-\u03ff|\-–—=+\.,·:;«»×℃ᵉ¹²³%°*\!'\? ]|\/(?=[0-9a-zA-Z])|\((?![\u3400-\u4dbf\u4e00-\u9fff]).+?\)|\[(?![\u3400-\u4dbf\u4e00-\u9fff]).+?\])+/
 
 ZH_SIMPLE: /[\u3400-\u4dbf\u4e00-\u9fff]+/
 
-ZH: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\u2200-\u22ff\u3400-\u4dbf\u4e00-\u9fff\u0370-\u03ff0-9;\.,〈〉〔〕（）：？！；…、。\[\]\(\)\/“”?!℃% ]|\/(?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\)]+?\])*[\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）。”？！!?%](\([^\)]+?\))?|[\u3400-\u4dbf\u4e00-\u9fff]/
+ZH: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈《〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([\u3400-\u4dbf\u4e00-\u9fff\u0370-\u03ff0-9;\.,《》〈〉〔〕（）：？！；?…、。・“”!℃%·\-— ]|[\/:](?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-,]{1,12} *(?=[\u3400-\u4dbf\u4e00-\u9fff。])|\/ *(?=\(?[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\]]+?\]|(?<=“)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ \-]+)*([\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）《》：。”？・—！!?%\.]|\([^\)]+?\)|\[[^\]]+?\]|(?<=[\u4e00-\u9fff])[a-zA-Z\u4e00-\u9fff])|[\u3400-\u4dbf\u4e00-\u9fff]/
 
-ZH_SENT: /(?:[\u3400-\u4dbf\u4e00-\u9fff0-9;,“〈《〔（…]|(?=\([\u3400-\u4dbf\u4e00-\u9fff]|\[[\u3400-\u4dbf\u4e00-\u9fff]))([\u3400-\u4dbf\u4e00-\u9fff\u0370-\u03ff0-9;\.,《》〈〉〔〕（）：？！；?…、。“”!℃%·\-— ]|[\/:](?=[\u3400-\u4dbf\u4e00-\u9fff])| *[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]{1,10}(?=[\u3400-\u4dbf\u4e00-\u9fff])|\/ *(?=\(?[\u3400-\u4dbf\u4e00-\u9fff])|\([^\)]+?\)|\[[^\]]+?\]|(?<=“)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ \-]+)*([\u3400-\u4dbf\u4e00-\u9fff0-9;,〈〉\)\]…〔〕（）《》。”？・—！!?%\.]|\([^\)]+?\)|\[[^\]]+?\]|(?<=[\u4e00-\u9fff])[a-zA-Z\u4e00-\u9fff])|[\u3400-\u4dbf\u4e00-\u9fff]/
-
-ENCYCLOPEDIA: /◇[^◇❶-❿⓫-⓴◆‖]+/
+ENCYCLOPEDIA: /◇[^◇❶-❿⓫-⓴㉑㉒◆‖]+/
 
 
-BLACK_NUM: /[❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴]/
+BLACK_NUM: /[❶❷❸❹❺❻❼❽❾❿⓫⓬⓭⓮⓯⓰⓱⓲⓳⓴㉑㉒]/
 
+
+WORD_LINK: /[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+( [0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)+(?= *→)/
 
 WORD: /([0-9]\. *)?(C\. A\. C\. 40|b\.a\.\-ba|(\-?[A-Za-z]\. ?){2,}|\*?[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœöüñ'\-]+( (?!ou\b|et\b)[0-9a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ'\-]+\b(?!\.))*(, *(?!préfixe|abrév|sigle|préf\.|\w+\.)[a-zA-ZÀÂÉÊÈËÌÏÎÔÙÛÇÆŒàâéêèëìïîôùûçæœ\-]+)*)/
 
