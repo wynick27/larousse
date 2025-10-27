@@ -536,7 +536,7 @@ def replace_prons(match):
 #with open('./data/french1.json','w',encoding='utf8') as f:
 #    json.dump(words_fr,f, ensure_ascii=False, indent=2)
 
-#headword_expand()
+headword_expand()
 errors = grammar_check()
 #parsed,errors = load_parsed_data()
 #for word,error in errors:

@@ -1089,7 +1089,7 @@ def merge_image(pdf, positions, direction="vertical", scale = False):
         base_image = pdf.extract_image(xref)
         img_data = base_image["image"]
         img = Image.open(io.BytesIO(img_data))
-        img = ImageOps.invert(img)
+        #img = ImageOps.invert(img)
         
         # 注意：PDF 页面和图像坐标可能不一致，通常需要用 matrix 转换
         # 这里假设第一个图像覆盖整个页面（常见情况：扫描件）
