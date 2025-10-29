@@ -13,8 +13,8 @@ PDF_PATH = "./data/ocr-法汉双解词典-2130p.pdf"
 PAGE_NUMBER = 72  # 0-based index
 MIN_WORD_HEIGHT = 5      # 忽略过小噪点（行高度最小）
 HEADER_ROW_RATIO = 0.6   # 顶部行黑色像素比例高于这个值认为是页眉/横线
-BLANK_COL_RATIO = 0.0001   # 每列黑色像素低于这个比例认为是“空白列”
-LEFT_OFFSET_PIX_MIN = 23 # 左偏移阈值最小像素
+BLANK_COL_RATIO = 0.002   # 每列黑色像素低于这个比例认为是“空白列”
+LEFT_OFFSET_PIX_MIN = 35 # 左偏移阈值最小像素
 LEFT_OFFSET_RATIO = 0.06 # 左偏移阈值按列宽的比例
 OUTPUT_JSON = "entries.json"
 OUTPUT_IMG = "annotated_page.png"
@@ -111,15 +111,20 @@ def get_annotation(img,angle = 0):
     img_w, img_h = img.size
 
     result = {}
+    
 
-    if angle:
-        result['deskew'] = angle
 
     # 灰度 & 自适应二值化（文字为 255, 背景为 0）
     gray = np.array(img.convert("L"))
-    
+
+    if angle:
+        gray = np.array(img.convert("L").rotate(-angle, expand=False))
+        Image.fromarray(gray).save("deskewed.png")
+        result['deskew'] = -angle
+
     _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
 
+    
     row_sum = np.sum(binary !=0, axis=1) / binary.shape[1]  # 每行黑色像素比例
     header_rows = 0
     for i, r in enumerate(row_sum):
@@ -151,8 +156,8 @@ def get_annotation(img,angle = 0):
             header = [int(x),int(y),int(w),int(h)]
             print("横线 bbox:", x, y, w, h)
             header_rows = y+h
-            col_left = max(x - 5, col_left)
-            col_right = min(x + w + 5, col_right)
+            col_left = max(int(x) - 5, col_left)
+            col_right = min(int(x) + int(w) + 5, col_right)
             result['header'] = header
             binary[:,0:x-20] = 0
             binary[:,x+w+20:] = 0
@@ -202,6 +207,9 @@ def get_annotation(img,angle = 0):
 
         # 给左右各留一点边缘缓冲（避免截掉文字）
         margin = 10
+        if result.get('header'):
+            col_left = min(col_left, left_bound - margin)
+            col_right = max(col_right, right_bound + margin)
         col_left = max(0, left_bound - margin)
         col_right = min(binary.shape[1] - 1, right_bound + margin)
 
@@ -228,10 +236,10 @@ def get_annotation(img,angle = 0):
         lines = []
         in_line = False
         for i, s in enumerate(row_sum_col):
-            if s > 8 and not in_line:
+            if s > 5 and not in_line:
                 start = i
                 in_line = True
-            elif s <= 8 and in_line:
+            elif s <= 5 and in_line:
                 end = i
                 in_line = False
                 if end - start >= MIN_WORD_HEIGHT:
@@ -262,7 +270,10 @@ def get_annotation(img,angle = 0):
             entry_top = lines[start_line][0] + header_rows
             entry_bottom = lines[end_line][1] + header_rows
             # x 需映射到原始坐标系（x_start 在 trimmed 上与原图一致）
+            
             entry_coords = [int(x_start), int(entry_top), int(x_end), int(entry_bottom)]
+            if len(headword_lines) == 1 and not is_headword:
+                entry_coords[0] = entry_coords[0] - 75
             entries.append({"column": col_idx, "coords": entry_coords, 'is_headword': is_headword})
 
     return result
@@ -270,6 +281,8 @@ def get_annotation(img,angle = 0):
 def draw_page(img,annotation):
     #rgb =ImageOps.invert(img).convert("RGB")
     rgb = img.convert("RGB")
+    if annotation.get('deskew'):
+        rgb = rgb.rotate(annotation['deskew'], expand=False)
     draw = ImageDraw.Draw(rgb)
 
     # 画页眉分界线（若检测到）
@@ -319,7 +332,7 @@ def rotate_image(image, angle, change_size = False):
     return rotated
 def deskew_image(image):
     gray = np.array(image.convert("L"))
-    _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+    _, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
     morph = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
     coords = np.column_stack(np.where(morph > 0))
@@ -337,8 +350,7 @@ def deskew_image(image):
         angle = angle
     else:
         angle = 90 - angle
-    result =  rotate_image(binary,angle)
-    return Image.fromarray(result), angle
+    return angle
     #Image.fromarray(result).save("deskew.png")
 
 def annotate_pages(pdf_path, start_page, json_path = None, img_dir = None, deskew = False):
@@ -354,7 +366,7 @@ def annotate_pages(pdf_path, start_page, json_path = None, img_dir = None, deske
         img = get_image(page)
         angle = 0
         if deskew:
-            img,angle = deskew_image(img)
+            angle = deskew_image(img)
             #img.save(f'img/page_{page_num+1:04}_deskew.png')
 
         annotation = get_annotation(img,angle)
@@ -378,15 +390,17 @@ def annotate_pages(pdf_path, start_page, json_path = None, img_dir = None, deske
 
 if __name__ == '__main__':
     #72
-    annotate_pages(PDF_PATH,2021, OUTPUT_JSON, OUTPUT_IMG)
+    #annotate_pages(PDF_PATH,2021, OUTPUT_JSON, OUTPUT_IMG)
     #error_imgs = [132, 134, 150, 192, 197, 206, 245, 272, 291, 345, 365, 370, 380, 477, 486, 507, 542, 576, 607, 615, 630, 633, 635, 686, 688, 689, 703, 706, 752, 754, 790, 802, 822, 827, 832, 848, 870, 891, 892, 896, 905, 907, 914, 919, 956, 966, 1015, 1022, 1053, 1107, 1140, 1142, 1146, 1150, 1151, 1154, 1158, 1212, 1221, 1227, 1247, 1253, 1255, 1267, 1286, 1305, 1308, 1332, 1360, 1397, 1405, 1408, 1420, 1453, 1480, 1500, 1503, 1520, 1530, 1541, 1552, 1556, 1592, 1616, 1649, 1656, 1660, 1748, 1749, 1766, 1795, 1828, 1836, 1838, 1840, 1845, 1859, 1916, 1918, 1942, 1980, 1987, 1992, 2008, 2022, 2038, 2062, 2070, 2082, 2110, 2120] 
     #annotate_pages(PDF_PATH,error_imgs, OUTPUT_JSON, OUTPUT_IMG, True)
 
     #annotate_pages(PDF_PATH,[2120], OUTPUT_JSON, OUTPUT_IMG)
-    error_images = [1024, 1126, 1141, 1327, 1608, 2092]
-    error_images = [609, 1024, 1124, 1126, 1141, 1569, 1608, 2092]
-    [535,2093]
-    [402,451,602,801,841,862,891,896,1124,1143,1144,1150,1200,1425,1569,1595,1669,1968,2004,2058,2091]
-    [531,1467,1474,1553,1942,1993,2022]
+    error_images = [1024, 1124, 1126, 1141, 1327, 1608, 2092]
+    #[535,2058,2093]
+    #[1150]
+    [402,451,841,896,1143,1405,1425,1569,1595,1669,1968,2004]
+    [531,602,801,862,891,1144,1200,1467,1474,1553,1942,1993,2022]
+    error_images = [1024, 1124, 1126, 1141, 1569, 1608]
+    
     #error_images = [219, 229, 247, 259, 269, 274, 349, 464, 483, 494, 520, 525, 529, 531, 537, 609, 660, 690, 807, 906, 935, 1019, 1024, 1124, 1126, 1141, 1148, 1150, 1190, 1236, 1258, 1264, 1285, 1310, 1320, 1324, 1328, 1348, 1363, 1378, 1441, 1520, 1536, 1569, 1608, 1616, 1677, 1737, 1742, 1759, 1784, 1791, 1825, 1854, 1877, 1942, 1965, 1973, 1976, 2000, 2010, 2059, 2076, 2092, 2093, 2107, 2109, 2110, 2115]
-    annotate_pages(PDF_PATH,error_images, OUTPUT_JSON, OUTPUT_IMG)
+    annotate_pages(PDF_PATH,[1126], OUTPUT_JSON, OUTPUT_IMG)

@@ -100,9 +100,11 @@ def match_image_pos(words):
         with open(f'./json/page_{page+start_page:04}.json') as f:
             annotation = json.load(f)
         entries = []
+        columns = [[],[]]
 
         for index, entry in enumerate(annotation['entries']):
             position_info = {'page':page+70, 'bbox':entry['coords']}
+            columns[entry['column']].append(entry)
             if entry['is_headword']:
                 entries.append([position_info])
             elif index == 0:
@@ -115,7 +117,9 @@ def match_image_pos(words):
                     last_entry = [last_entry,position_info]
                 entries.append(last_entry)
         
-            
+        if len(columns[1]) == 1 and columns[1][0]['is_headword'] == False:
+            print(f"错误： page {page} ({page+start_page}) 右侧栏只有一个标记")
+
 
         if len(words_in_page) == len(entries):
             for word, position in zip(words_in_page, entries):
@@ -406,7 +410,7 @@ def tree_to_dict(node):
     if isinstance(node, Tree):
         return {
             "type": node.data.type,
-            "type": node.data.value,
+            "value": node.data.value,
             "start_pos": getattr(node.meta, "start_pos", None),
             "end_pos": getattr(node.meta, "end_pos", None),
             "children": [tree_to_dict(child) for child in node.children]
@@ -418,6 +422,8 @@ def tree_to_dict(node):
             "start_pos": getattr(node, "start_pos", None),
             "end_pos": getattr(node, "end_pos", None)
         }
+
+
 def grammar_check():
     with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
         data = json.load(f)
@@ -536,7 +542,7 @@ def replace_prons(match):
 #with open('./data/french1.json','w',encoding='utf8') as f:
 #    json.dump(words_fr,f, ensure_ascii=False, indent=2)
 
-headword_expand()
+#headword_expand()
 errors = grammar_check()
 #parsed,errors = load_parsed_data()
 #for word,error in errors:
