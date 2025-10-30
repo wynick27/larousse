@@ -9,19 +9,8 @@ def add_links(text):
     return re.sub("\((?:syn|contr)\. *([^;\)]+) *(?:;contr\. *([^;\)]+))?\)",replace, text)
 
 
-def create_mdx_source(input_json_path, output_txt_path):
-    """
-    将JSON文件转换为用于制作MDX词典的源文本文件。
+def create_mdx_source(input_json_path, output_txt_path, add_images=False, use_xml=True):
 
-    输出格式为:
-    headword
-    text
-    </>
-
-    参数:
-    input_json_path (str): 输入的JSON文件路径。
-    output_txt_path (str): 输出的MDX源文本文件路径。
-    """
     try:
         with open(input_json_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -37,11 +26,16 @@ def create_mdx_source(input_json_path, output_txt_path):
         # 遍历JSON数据中的每一个词条
         for entry in data:
             # 检查词条中是否包含'headword'和'text'键
-            if 'main_word' in entry and 'text' in entry:
-                headword = entry['main_word']
-                text = entry['text']
+            if 'text' in entry:
+                headword = entry['main_word'] if 'main_word' in entry else entry['headword']
+                text = '<link rel="stylesheet" href="larousse.css" />'
+                if 'xml' in entry and use_xml:
+                    text += entry['xml']
+                else:
+                    text += entry['text']
                 text = add_links(text)
-                #text += f'<br><img id="{entry['id']}" src="{entry['id']}.jpg"/>'
+                if add_images and 'id' in entry:
+                    text += f'<br><img id="{entry['id']}" src="{entry['id']}.jpg"/>'
 
                 # 按照指定格式写入文件
                 f_out.write(headword + '\n')
@@ -63,7 +57,7 @@ def create_mdx_source(input_json_path, output_txt_path):
 # --- 程序执行 ---
 if __name__ == "__main__":
     # 设置输入和输出文件名
-    input_file = '拉鲁斯法汉双解词典_expanded.json'           # 你的JSON文件名
+    input_file = '拉鲁斯法汉双解词典_xml.json'           # 你的JSON文件名
     output_file = '拉鲁斯法汉双解词典.mdx_src.txt'     # 你希望生成的MDX源文件名
 
     create_mdx_source(input_file, output_file)

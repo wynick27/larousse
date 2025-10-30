@@ -423,7 +423,6 @@ def tree_to_dict(node):
             "end_pos": getattr(node, "end_pos", None)
         }
 
-
 def grammar_check():
     with open('./拉鲁斯法汉双解词典.json','r',encoding='utf8') as f:
         data = json.load(f)
@@ -431,15 +430,15 @@ def grammar_check():
         from lark import Lark, UnexpectedInput, Token
         grammar_text = f.read()
         errors = []
-        #larousse = Lark(grammar_text,propagate_positions=True)
-        larousse = Lark(grammar_text)
+        larousse = Lark(grammar_text,propagate_positions=True)
+        #larousse = Lark(grammar_text)
     parsed = []
         
     for word in data:
         try:
             parse_result = larousse.parse(word['text'])
             parsed.append((word,parse_result))
-            #word['parse_tree'] = tree_to_dict(parse_result)
+            word['parse_tree'] = tree_to_dict(parse_result)
             #print(parse_result.pretty())
         except UnexpectedInput as e:
             print(f"{word['headword']}({word['page']})\n{e}")
