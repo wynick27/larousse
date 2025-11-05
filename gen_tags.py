@@ -20,6 +20,9 @@ def parse_black_num(node):
         num -= ord('㉑') - 21
     return [(f"<num value='{num}'>", node['start_pos']), (f"</num>", node['end_pos'])]
 
+def parse_link_word(node):
+    word = node['value']
+    return [(f"<a href=entry://'{word}'>", node['start_pos']), (f"</a>", node['end_pos'])]
 
 tag_map = {
     'start': '',
@@ -28,6 +31,8 @@ tag_map = {
     'POS': 'pos',
     'usage': 'usage',
     'definition': 'def',
+    'wordhead':'head',
+    'wordhead.WORD':'word',
     'ZH': 'zh',
     'FR': 'fr',
     'BLACK_NUM': parse_black_num,
@@ -38,16 +43,24 @@ tag_map = {
     'GRAMMAR': 'grammar',
     'pron': '',
     'PRON': 'pron',
+    'CATEGORY_FR':'cat_fr',
+    'CATEGORY_ZH':'cat_zh',
+    'etymology.PAREN_ENCLOSED':'etym',
+    'ETYM_ZH':'etym_zh',
+    'link.FR_WORD': parse_link_word,
 }
 
 
-def tree_to_tags(node):
+def tree_to_tags(node,parent_tag=None):
     node_type = node['type']
     if node_type == 'RULE':
         tag = node['value']
     else:
         tag = node_type
-    tag_val = tag_map.get(tag, '')
+    if parent_tag and f'{parent_tag}.{tag}' in tag_map:
+        tag_val = tag_map.get(f'{parent_tag}.{tag}', '')
+    else:
+        tag_val = tag_map.get(tag, '')
     if isinstance(tag_val, str):
         if tag_val:
             open_tag = f"<{tag_val}>"
@@ -60,7 +73,7 @@ def tree_to_tags(node):
         if open_tag:
             result.append((open_tag, node['start_pos']))
         for child in children:
-            result.extend(tree_to_tags(child))
+            result.extend(tree_to_tags(child,tag))
         if close_tag:
             result.append((close_tag,node['end_pos']))
         return result

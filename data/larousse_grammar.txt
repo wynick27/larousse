@@ -6,11 +6,11 @@ wordhead: WORD pron? GRAMMAR? pos? (("et"| "ou") VXTAG? WORD pron)* pos GRAMMAR?
 
 pos: POS+ (("et"| "ou") POS+)?
 
-content : category? BRACKET_ENCLOSED? (usage_list | explanation | explanation_list)
-usage_list: (usage (explanation_list|explanation))+
+content : category? BRACKET_ENCLOSED? (usage_list | explanation_list)
+usage_list: (usage explanation_list)+
 usage: ("-"? ROMAN_NUM ".")? (FR_WORD | FR_SENT ) ("[" ZH_SIMPLE "]" ":"?|":") | "-" ROMAN_NUM "." PAREN_ENCLOSED BRACKET_ENCLOSED? BRACKET_ENCLOSED? 
-explanation_list: (BLACK_NUM category? explanation)+
-explanation:  PAREN_ENCLOSED? (FR ZH | link | FR link) PAREN_ENCLOSED? example_list ("‖" phrase)* rem?
+explanation_list: (explanation)+
+explanation:  BLACK_NUM? category? PAREN_ENCLOSED? (FR ZH | link | FR link) PAREN_ENCLOSED? example_list ("‖" phrase)* rem?
 
 example_list: (":" example ("/"? example)*)? encyclopedia* 
 example:  FR ZH PAREN_ENCLOSED?
