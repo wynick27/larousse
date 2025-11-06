@@ -37,6 +37,8 @@ tag_map = {
     'FR': 'fr',
     'BLACK_NUM': parse_black_num,
     'explanation': 'def',
+    'explanation_num': 'def',
+    'explanation_num.explanation': '',
     'phrase': 'phrase',
     'example': 'example',
     'rem': 'rem',
@@ -84,13 +86,39 @@ def tree_to_tags(node,parent_tag=None):
 
 
 if __name__ == "__main__":
+    with open('./拉鲁斯法汉双解词典_xml.json','r',encoding='utf8') as f:
+        data = json.load(f)
+    with open('./285_xml.json','r',encoding='utf8') as f:
+        ai_xml = json.load(f)
+    with open('./data/error_parse.json','r',encoding='utf8') as f:
+        errors = json.load(f)
+    ai_map = {entry['headword']:entry['xml'] for entry in ai_xml}
+    for entry in data:
+        if entry['headword'] in ai_map:
+            entry['xml'] = ai_map[entry['headword']]
+            entry['tag_stats'] = 'ai_gen'
+        elif entry['id'] in errors and 'xml' in entry:
+            entry['tag_stats'] = 'has_error'
+        entry['xml'] = entry['xml'].replace('<fr> ',' <fr>').replace(' </fr>','</fr> ')
+    with open('./拉鲁斯法汉双解词典_xml1.json','w',encoding='utf8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    with open('./拉鲁斯法汉双解词典_xml.json','r',encoding='utf8') as f:
+        data = json.load(f)
     with open('./拉鲁斯法汉双解词典_parsed.json','r',encoding='utf8') as f:
         data = json.load(f)
-    for entry in data:
+    with open('./拉鲁斯法汉双解词典_expanded.json','r',encoding='utf8') as f:
+        data1 = json.load(f)
+    for entry,entry1 in zip(data,data1):
         if 'parse_tree' not in entry:
             continue
         tags = tree_to_tags(entry['parse_tree'])
         entry['xml'] = insert_tags(entry['text'], tags)
+        if entry1.get('main_word'):
+            entry['main_word'] = entry1['main_word']
+        if entry1.get('expanded_words'):
+            entry['expanded_words'] = entry1['expanded_words']
+        if entry1.get('normalized_words'):
+            entry['normalized_words'] = entry1['normalized_words']
         del entry['parse_tree']
     with open('./拉鲁斯法汉双解词典_xml.json','w',encoding='utf8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
